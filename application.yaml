@@ -1,0 +1,9 @@
+hapi:
+  fhir:
+    implementationguides:
+      ndhm_in:
+        packageUrl: "https://nrces.in/ndhm/fhir/r4/6.5.0/package.tgz"
+        name: "ndhm.in"
+        version: "6.5.0"
+    validation:
+      requests_enabled: true

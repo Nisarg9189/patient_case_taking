@@ -1,0 +1,152 @@
+[
+ {
+  "keywords": [
+   "brings you",
+   "today"
+  ],
+  "text": "I have had a fever for three days and a dry cough.",
+  "files": {
+   "Rishi": "Rishi_0.wav"
+  }
+ },
+ {
+  "keywords": [
+   "scale",
+   "severe",
+   "how bad"
+  ],
+  "text": "It is about a five out of ten.",
+  "files": {
+   "Rishi": "Rishi_1.wav"
+  }
+ },
+ {
+  "keywords": [
+   "family",
+   "parents",
+   "siblings"
+  ],
+  "text": "No, nobody in my family has any illness.",
+  "files": {
+   "Rishi": "Rishi_2.wav"
+  }
+ },
+ {
+  "keywords": [
+   "allerg"
+  ],
+  "text": "Yes, I am allergic to penicillin, it gives me a rash.",
+  "files": {
+   "Rishi": "Rishi_3.wav"
+  }
+ },
+ {
+  "keywords": [
+   "condition",
+   "surger",
+   "hospital",
+   "history"
+  ],
+  "text": "No, I don't have any medical conditions.",
+  "files": {
+   "Rishi": "Rishi_4.wav"
+  }
+ },
+ {
+  "keywords": [
+   "medic",
+   "medicine",
+   "prescription"
+  ],
+  "text": "No, I am not taking any medicines.",
+  "files": {
+   "Rishi": "Rishi_5.wav"
+  }
+ },
+ {
+  "keywords": [
+   "started",
+   "start",
+   "worse",
+   "better",
+   "begin"
+  ],
+  "text": "It started three days ago and it is getting a bit worse.",
+  "files": {
+   "Rishi": "Rishi_6.wav"
+  }
+ },
+ {
+  "keywords": [
+   "other symptom",
+   "any other",
+   "anything else",
+   "along with"
+  ],
+  "text": "I also feel very tired.",
+  "files": {
+   "Rishi": "Rishi_7.wav"
+  }
+ },
+ {
+  "keywords": [
+   "oxygen",
+   "oximeter"
+  ],
+  "text": "No, I don't have an oximeter at home.",
+  "files": {
+   "Rishi": "Rishi_8.wav"
+  }
+ },
+ {
+  "keywords": [
+   "temperature",
+   "blood pressure",
+   "measured",
+   "pulse"
+  ],
+  "text": "Yesterday my fever was one hundred and two.",
+  "files": {
+   "Rishi": "Rishi_9.wav"
+  }
+ },
+ {
+  "keywords": [
+   "smok",
+   "alcohol",
+   "vape"
+  ],
+  "text": "No, I don't smoke and I don't drink.",
+  "files": {
+   "Rishi": "Rishi_10.wav"
+  }
+ },
+ {
+  "keywords": [
+   "travel",
+   "sick",
+   "contact"
+  ],
+  "text": "No, I have not travelled and nobody around me is sick.",
+  "files": {
+   "Rishi": "Rishi_11.wav"
+  }
+ },
+ {
+  "keywords": [
+   "vaccin",
+   "shot"
+  ],
+  "text": "Yes, I had the flu shot last year.",
+  "files": {
+   "Rishi": "Rishi_12.wav"
+  }
+ },
+ {
+  "keywords": [],
+  "text": "I'm not sure.",
+  "files": {
+   "Rishi": "Rishi_13.wav"
+  }
+ }
+]

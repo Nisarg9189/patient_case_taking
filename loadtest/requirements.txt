@@ -1,0 +1,4 @@
+locust==2.46.6
+websocket-client==1.9.2
+numpy==2.5.3
+websockets==16.1.1

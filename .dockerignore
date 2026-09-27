@@ -1,0 +1,13 @@
+# build context for deploy/Dockerfile: only code goes to the Docker build, never secrets
+**/.env
+**/*.env
+deploy/app.env
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+frontend/dist
+loadtest
+agents
+*.png
+*.log

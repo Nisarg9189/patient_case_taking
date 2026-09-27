@@ -1,0 +1,42 @@
+# The interview app behind Caddy (automatic HTTPS; browsers only allow the microphone on
+# HTTPS pages). Run on the server from this folder:
+#
+#   docker compose up -d --build
+#
+# Needs two files next to this one (not in the image, not in git):
+#   .env      DOMAIN=<your domain, or the server's IP as 1-2-3-4.sslip.io>
+#   app.env   the API keys (a copy of patient-nlp/.env)
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file: app.env
+    restart: unless-stopped
+    expose:
+      - "8000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:
