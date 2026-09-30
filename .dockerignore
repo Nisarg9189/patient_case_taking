@@ -11,3 +11,4 @@ loadtest
 agents
 *.png
 *.log
+backend/cases

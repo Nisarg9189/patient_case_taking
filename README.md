@@ -26,8 +26,35 @@ allergies, history, vitals, …) for a clinician.
 ## Run locally
 
 API keys go in `patient-nlp/.env` (not in the repository): `GEMINI_API_KEY`,
-`OPENAI_API_KEY`, the Kafka/Redis settings used by the optional JEV worker, and
+`OPENAI_API_KEY`, `DATABASE_URL` (the Neon Postgres connection string; finished cases,
+the patients' edits and the summaries are stored there), the Kafka/Redis settings used by
+the optional JEV worker, and
 `OLLAMA_API_KEY` only if planning is switched back to Ollama (`PLANNING_PROVIDER=ollama`).
+
+Sign-in is Neon Auth (email + password): `NEON_AUTH_URL` (the project's Neon Auth URL) and
+`PLATFORM_ADMIN_EMAILS` (comma-separated) in `patient-nlp/.env`, and the same URL as
+`VITE_NEON_AUTH_URL` in `frontend/.env.local`. New accounts are patients of the default
+clinic; clinic admins and platform admins give staff roles (doctor, nurse, front desk,
+clinic admin) on the Clinic members page.
+
+Appointments: on the Clinic schedule page a clinic admin sets the opening hours, the slot
+length, how many patients each doctor takes per slot, how far ahead patients may book, and
+each doctor's weekly hours and days off. After the interview the patient picks a hospital,
+a doctor (or any), a day and a time; that hospital's doctors and nurses can then open the
+interview. Staff see each day's visits on the Appointments page. A doctor can refer a visit
+there to another doctor at any hospital (a free time with that doctor, and a note for them):
+the receiving hospital gets the patient's interview and the visit.
+
+Prescriptions: on a patient's case a doctor writes a prescription (generic names, strength,
+dose, route, frequency, timing, duration, total quantity, investigations, advice, follow-up)
+and signs it; it carries the doctor's qualification and registration number and cannot change
+after signing (it can be voided). The patient sees and prints their signed prescriptions.
+Medicines are searched in the Jan Aushadhi (PMBJP) list of 2110 generic medicines
+(frontend/public/data/medicines.json; to update it, see tools/medicines/build.py). Clinic
+admins set the clinic's address, phone, email and registration number (Clinic schedule page);
+they are printed on its prescriptions. A patient's date of birth, sex, weight, phone, address
+and ABHA number are saved (by the patient, or from the prescriptions doctors sign) and fill in
+each new prescription.
 
 ```bash
 cd patient-nlp && python -m venv .venv && .venv/bin/pip install -r requirements.txt -r ../backend/requirements.txt

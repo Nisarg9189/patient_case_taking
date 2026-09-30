@@ -1,5 +1,6 @@
 # Gets and renews the HTTPS certificate for DOMAIN automatically (Let's Encrypt), and
 # forwards everything, including the /ws/interview WebSocket, to the app.
 {$DOMAIN} {
+	encode zstd gzip
 	reverse_proxy app:8000
 }

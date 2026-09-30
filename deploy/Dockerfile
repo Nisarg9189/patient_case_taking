@@ -7,7 +7,10 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# the Neon Auth URL is built into the page: pass --build-arg VITE_NEON_AUTH_URL=... (the CI
+# image build does), or keep frontend/.env.local in the build context (the EC2 deploy does)
+ARG VITE_NEON_AUTH_URL
+RUN if [ -z "$VITE_NEON_AUTH_URL" ]; then unset VITE_NEON_AUTH_URL; fi && npm run build
 
 # ---- 2. the backend
 FROM python:3.14-slim
@@ -23,7 +26,7 @@ RUN pip install -r patient-nlp/requirements.txt -r backend/requirements.txt
 # code only: API keys come from the environment at run time (deploy/app.env), never the image
 COPY patient-nlp/*.py patient-nlp/
 COPY patient-nlp/certs patient-nlp/certs
-COPY backend/app.py backend/app.py
+COPY backend/*.py backend/
 COPY --from=frontend /frontend/dist frontend/dist
 ENV FRONTEND_DIST=/app/frontend/dist
 

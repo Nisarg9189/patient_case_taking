@@ -144,6 +144,9 @@ class VirtualPatient(User):
                     state["listening"] = False
                     if state["speaker"] is not None:
                         state["speaker"].join(timeout=1)
+                elif kind == "review_case":
+                    # the patient checks the finished case and presses Save (no corrections)
+                    ws.send(json.dumps({"type": "review_confirmed", "sections": {}}))
                 elif kind == "status":
                     self.report(f"status: {event['state']}", value_ms=0)
                 elif kind == "error":

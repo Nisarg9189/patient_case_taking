@@ -1,18 +1,26 @@
 :root {
-  --bg: #f4f6f8;
+  /* one solid brand purple (the sidebar), no gradients */
+  --brand: #7b68c8;
+  --brand-strong: #6853bf;
+  --brand-soft: #efecfb;
+  --brand-tint: #f8f7fd;
+  --bg: #ffffff;
   --card: #ffffff;
-  --text: #1b2430;
-  --muted: #667085;
-  --line: #e3e8ee;
-  --accent: #1f6feb;
-  --accent-soft: #e8f0fe;
+  --text: #2a2838;
+  --muted: #8a879e;
+  --line: #e9e7f1;
+  --accent: var(--brand-strong);
+  --accent-soft: var(--brand-soft);
+  --amber: #f2b544;
+  --slate: #5d6174;
   --listen: #12805c;
   --listen-soft: #e6f4ee;
   --warn: #b54708;
   --warn-soft: #fef3e6;
-  --alert: #b42318;
+  --alert: #c0392b;
   --alert-soft: #fdecea;
 
+  accent-color: var(--brand-strong);
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);

@@ -13,6 +13,7 @@ Settings (environment variables):
 import asyncio
 import os
 import random
+import uuid
 from types import SimpleNamespace
 
 from google.genai import types
@@ -245,7 +246,7 @@ async def end_conversation(conversation_id):
     _conversations.pop(conversation_id, None)
 
 
-async def plan_turn(conversation_id, patient_answer, question=None, on_next_step=None):
+async def plan_turn(conversation_id, patient_answer, question=None, on_next_step=None, urgent=lambda: False):
     from patient_extraction import CHECKLIST_ITEMS, NO_ANSWER
 
     covered = _conversations.setdefault(conversation_id, set())
@@ -332,4 +333,31 @@ def install(backend_app_module):
                 setattr(module, name, fake)
     gemini_voice_agent.transcribe_recorded_answer = transcribe_recorded_answer
     gemini_voice_agent.send_to_jev = send_to_jev
+
+    # no sign-in and no database: every virtual patient is a new anonymous patient, and no
+    # fake case or audit entry is written to the real (Neon) database
+    async def any_patient(websocket):
+        return {"user_id": str(uuid.uuid4()), "org_id": None}
+
+    async def not_stored(*args, **kwargs):
+        return None
+
+    # finish_interview sends each case to the real Kafka "case-summary" topic for the summary
+    # worker: a fake producer keeps load-test cases out of it
+    class NoKafkaProducer:
+        async def start(self):
+            pass
+
+        async def send_and_wait(self, topic, value):
+            await asyncio.sleep(latency("kafka_send"))
+
+        async def stop(self):
+            pass
+
+    workflow.create_producer = NoKafkaProducer
+
+    backend_app_module.authenticate_interview = any_patient
+    backend_app_module.case_store.save_original = not_stored
+    backend_app_module.db.audit = not_stored
+    backend_app_module.db.audit_later = lambda *args, **kwargs: None
     print(f"🧪 Fake providers installed (latency x{LATENCY_SCALE}, Gemini stall rate {STALL_RATE:.0%})", flush=True)

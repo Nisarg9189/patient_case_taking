@@ -1,4 +1,8 @@
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
+import { BookVisit, MyAppointments } from './BookVisit'
+import { MyDetails, MyPrescriptions } from './Prescriptions'
+import { PageHeader } from './PageHeader'
 import type { CaseRecord, Checklist, Symptom, TopicStatus } from './types'
 import { useInterview, type Phase } from './useInterview'
 
@@ -33,26 +37,25 @@ const PHASE_LABEL: Record<Phase, string> = {
   listening: 'Listening',
   thinking: 'Next question…',
   reconnecting: 'Reconnecting…',
+  reviewing: 'Check your answers',
   done: 'Finished',
   error: 'Stopped',
 }
 
-export default function App() {
+// the patient's page: the spoken interview and their case summary
+export function InterviewView() {
   const interview = useInterview()
   const { phase } = interview
   const active = ['connecting', 'speaking', 'listening', 'thinking', 'reconnecting'].includes(phase)
 
   return (
     <div className="page">
-      <header className="header">
-        <div>
-          <h1>Patient intake</h1>
-          <p className="subtitle">A short spoken interview before your appointment</p>
-        </div>
-        <span className={`phase phase-${phase}`}>{PHASE_LABEL[phase]}</span>
-      </header>
+      <PageHeader tabs={[['interview', 'Patient intake']]} active="interview"
+                  right={<span className={`phase phase-${phase}`}>{PHASE_LABEL[phase]}</span>} />
+      <p className="page-intro">A short spoken interview before your appointment</p>
 
       {interview.notice && <div className="notice">{interview.notice}</div>}
+      {interview.review && <ReviewDialog record={interview.review} onSave={interview.confirmReview} />}
       {interview.connection && active && (
         <div className={`connection connection-${interview.connection.state}`} role="status">
           <span className="spinner" aria-hidden="true" />
@@ -78,7 +81,8 @@ export default function App() {
             <div className="card intro">
               <h2>Thank you</h2>
               <p>{interview.ending ?? 'The interview is complete. Your answers are summarised under "Case so far".'}</p>
-              <button className="primary" onClick={interview.start}>
+              <p>Now choose the hospital and time for your visit below.</p>
+              <button className="secondary" onClick={interview.start}>
                 Start a new interview
               </button>
             </div>
@@ -104,6 +108,11 @@ export default function App() {
             </div>
           )}
 
+          {phase === 'done' && <BookVisit caseId={interview.caseId} />}
+          {phase === 'idle' && <MyAppointments />}
+          {(phase === 'idle' || phase === 'done') && <MyPrescriptions />}
+          {phase === 'idle' && <MyDetails />}
+
           {interview.turns.length > 0 && (
             <div className="card">
               <h3>Conversation</h3>
@@ -120,7 +129,13 @@ export default function App() {
         </section>
 
         <aside className="summary">
-          <CaseSummary record={interview.caseRecord} />
+          <CaseSummary
+            key={interview.caseId ?? 'live'}
+            record={interview.caseRecord}
+            caseId={interview.caseId}
+            onSave={interview.saveReview}
+            initialReview={interview.confirmed}
+          />
           <ChecklistCard checklist={interview.checklist} />
         </aside>
       </main>
@@ -150,7 +165,78 @@ function symptomDetails(symptom: Symptom) {
     .join(' · ')
 }
 
-function CaseSummary({ record }: { record: CaseRecord | null }) {
+// the same details for reading: severity out of 10, no doubled "for"/"since", no repeats
+// (symptomDetails stays as it is: the patient's saved review texts were made from it)
+export function symptomLine(symptom: Symptom) {
+  const prefixed = (prefix: string, text: string | null) =>
+    text && (/^(for|since|from|about|around|over|after|on|in|last|this)\b/i.test(text) ? text : `${prefix} ${text}`)
+  const severity = symptom.severity && (/^\d+(\.\d+)?$/.test(symptom.severity.trim()) ? `severity ${symptom.severity.trim()}/10` : symptom.severity)
+  const parts = [
+    symptom.character,
+    severity,
+    prefixed('for', symptom.duration),
+    prefixed('since', symptom.onset),
+    symptom.location,
+    symptom.frequency,
+    ...symptom.triggers.map((t) => `when ${t}`),
+  ].filter((part): part is string => Boolean(part))
+  const seen = new Set<string>()
+  return parts.filter((part) => !seen.has(part.toLowerCase()) && seen.add(part.toLowerCase())).join(' · ')
+}
+
+// the summary sections, in the order shown; after the interview the patient can edit them
+export const SECTIONS = [
+  'Main complaint', 'Overall severity', 'Allergies', 'Symptoms', 'Medicines', 'Vital signs',
+  'Medical history', 'Family history', 'Lifestyle', 'Travel / contacts', 'Vaccinations', 'Said no to',
+]
+
+function allergyText(record: CaseRecord) {
+  if (record.allergies.status === 'reported') {
+    return record.allergies.items.map((a) => (a.reaction ? `${a.substance} (${a.reaction})` : a.substance)).join(', ')
+  }
+  return record.allergies.status === 'none_reported' ? 'None reported' : ''
+}
+
+// each section as plain text (one item per line), the starting point for the patient's edits
+export function sectionTexts(record: CaseRecord): Record<string, string> {
+  const medicines = [...record.regular_medications, ...record.recent_medications]
+  return {
+    'Main complaint': record.chief_complaint?.text ?? '',
+    'Overall severity': record.overall_severity?.text ?? '',
+    Allergies: allergyText(record),
+    Symptoms: record.symptoms
+      .map((s) => [s.status === 'present' ? s.name : `${s.name} (${s.status})`, symptomDetails(s)].filter(Boolean).join(': '))
+      .join('\n'),
+    Medicines: medicines.map((m) => [m.name, m.dose, m.frequency].filter(Boolean).join(' ')).join('\n'),
+    'Vital signs': record.vital_signs
+      .map((v) => `${v.name} ${v.approximate ? '~' : ''}${v.value}${v.measured_when ? ` (${v.measured_when})` : ''}`)
+      .join('\n'),
+    'Medical history': record.medical_history.map((c) => (c.duration ? `${c.condition} (${c.duration})` : c.condition)).join('\n'),
+    'Family history': record.family_history.map((f) => `${f.relative}: ${f.condition}`).join('\n'),
+    Lifestyle: record.social_history.map((s) => `${s.topic}: ${s.detail}`).join('\n'),
+    'Travel / contacts': record.travel_and_contacts.map((t) => t.detail).join('\n'),
+    Vaccinations: record.vaccinations.map(vaccinationText).join('\n'),
+    'Said no to': record.negative_answers.map((n) => TOPIC_LABEL[n.item] ?? n.item).join(', '),
+  }
+}
+
+function CaseSummary({
+  record,
+  caseId,
+  onSave,
+  initialReview,
+}: {
+  record: CaseRecord | null
+  caseId: string | null // set once the interview has ended and been stored: editing is allowed
+  onSave: (sections: Record<string, string>) => Promise<string>
+  initialReview?: Record<string, string> | null // what the patient saved in the review popup
+}) {
+  const [editing, setEditing] = useState(false)
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [reviewed, setReviewed] = useState<Record<string, string> | null>(initialReview ?? null)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
+
   if (!record) {
     return (
       <div className="card">
@@ -160,13 +246,123 @@ function CaseSummary({ record }: { record: CaseRecord | null }) {
     )
   }
 
+  const startEditing = () => {
+    setDrafts(reviewed ?? sectionTexts(record))
+    setEditing(true)
+    setMessage(null)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setMessage(null)
+    try {
+      const savedAt = await onSave(drafts)
+      setReviewed(drafts)
+      setEditing(false)
+      setMessage({ text: `Saved at ${new Date(savedAt).toLocaleTimeString()}`, error: false })
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : 'Could not save.', error: true })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>
+        Case so far {reviewed && !editing && <span className="tag tag-reviewed">Reviewed</span>}
+      </h3>
+
+      {editing ? (
+        <div className="case-edit">
+          {SECTIONS.map((label) => (
+            <label key={label} className="edit-row">
+              <span className="row-label">{label}</span>
+              <textarea
+                value={drafts[label] ?? ''}
+                rows={Math.max(1, (drafts[label] ?? '').split('\n').length)}
+                onChange={(event) => setDrafts({ ...drafts, [label]: event.target.value })}
+              />
+            </label>
+          ))}
+        </div>
+      ) : reviewed ? (
+        SECTIONS.filter((label) => reviewed[label]).map((label) => (
+          <Row key={label} label={label}>
+            <span className="pre-line">{reviewed[label]}</span>
+          </Row>
+        ))
+      ) : (
+        <CaseDetails record={record} />
+      )}
+
+      {caseId && (
+        <div className="buttons">
+          <button className="edit-button" onClick={editing ? () => setEditing(false) : startEditing} disabled={saving}>
+            {editing ? 'Cancel' : 'Edit'}
+          </button>
+          <button className="save-button" onClick={save} disabled={!editing || saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      )}
+      {message && (
+        <p className={message.error ? 'review-note review-error' : 'review-note'} role="status">
+          {message.text}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// The questions are done: the patient checks what was recorded, corrects it, and must press
+// Save before the interview finishes (the graph waits at workflow.patient_review).
+function ReviewDialog({ record, onSave }: { record: CaseRecord; onSave: (sections: Record<string, string>) => void }) {
+  const [drafts, setDrafts] = useState(() => sectionTexts(record))
+  const first = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    first.current?.focus()
+  }, [])
+
+  return (
+    <div className="modal-backdrop">
+      <div className="card modal" role="dialog" aria-modal="true" aria-labelledby="review-title">
+        <h2 id="review-title">Please check your answers</h2>
+        <p className="muted">
+          This is what we recorded from the interview. Correct anything that is wrong or missing, then press Save to
+          finish.
+        </p>
+        <div className="case-edit">
+          {SECTIONS.map((label, index) => (
+            <label key={label} className="edit-row">
+              <span className="row-label">{label}</span>
+              <textarea
+                ref={index === 0 ? first : undefined}
+                value={drafts[label] ?? ''}
+                rows={Math.max(1, (drafts[label] ?? '').split('\n').length)}
+                onChange={(event) => setDrafts({ ...drafts, [label]: event.target.value })}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="buttons">
+          <button className="save-button" onClick={() => onSave(drafts)}>
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// the case as the interview recorded it
+export function CaseDetails({ record }: { record: CaseRecord }) {
   const medicines = [...record.regular_medications, ...record.recent_medications]
   const saidNo = record.negative_answers.map((n) => TOPIC_LABEL[n.item] ?? n.item)
 
   return (
-    <div className="card">
-      <h3>Case so far</h3>
-
+    <>
       {record.chief_complaint && <Row label="Main complaint">{record.chief_complaint.text}</Row>}
       {record.overall_severity && <Row label="Overall severity">{record.overall_severity.text}</Row>}
 
@@ -194,7 +390,7 @@ function CaseSummary({ record }: { record: CaseRecord | null }) {
                 {record.important_reported_symptoms.some((f) => f.symptom === s.name) && (
                   <span className="tag tag-flag">flag</span>
                 )}
-                {symptomDetails(s) && <div className="muted small">{symptomDetails(s)}</div>}
+                {symptomLine(s) && <div className="muted small">{symptomLine(s)}</div>}
               </li>
             ))}
           </ul>
@@ -235,7 +431,7 @@ function CaseSummary({ record }: { record: CaseRecord | null }) {
         </Row>
       )}
       {saidNo.length > 0 && <Row label="Said no to">{saidNo.join(', ')}</Row>}
-    </div>
+    </>
   )
 }
 
@@ -252,7 +448,7 @@ function vaccinationText(v: { vaccine: string; detail: string }) {
     : `${v.vaccine}: ${v.detail}`
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+export function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="row">
       <div className="row-label">{label}</div>
@@ -261,7 +457,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-function ChecklistCard({ checklist }: { checklist: Checklist }) {
+export function ChecklistCard({ checklist }: { checklist: Checklist }) {
   const covered = TOPICS.filter(([key]) => checklist[key] && checklist[key] !== 'pending').length
   return (
     <div className="card">

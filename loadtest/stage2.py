@@ -103,6 +103,10 @@ async def interview(url, voice, results):
                     ok = answer_bank.heard_correctly(said, event["text"])
                     results.add("answer heard correctly", ok=ok,
                                 detail=None if ok else f"heard {event['text']!r} for {said!r}")
+                elif kind == "review_case":
+                    # the patient checks the finished case and presses Save (no corrections)
+                    results.add("review shown", time.time() - started)
+                    await ws.send(json.dumps({"type": "review_confirmed", "sections": {}}))
                 elif kind == "status":
                     results.add(f"status: {event['state']}")
                 elif kind == "error":

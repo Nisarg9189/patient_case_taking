@@ -64,28 +64,29 @@ The first of these to go wrong, and at how many patients, is the limit of one pr
 
 ## Stage 2 – real providers, deployed server
 
-Real Gemini, Ollama Cloud (and, only if Gemini fails mid-answer, OpenAI transcription):
-every virtual patient costs about as much as a real interview and counts against the
-providers' rate limits, so ramp up slowly.
+Real Gemini (and, only if Gemini fails mid-answer, OpenAI transcription): every virtual
+patient costs about as much as a real interview and counts against the providers' rate
+limits, so ramp up slowly.
 
-`RealPatient` speaks recorded answers (Indian-English macOS voices, one per patient) and
-reports `answer heard correctly` (did the server transcribe what it said). Record the
-answers once:
+`stage2.py` runs the virtual patients (asyncio + websockets; Locust's WebSocket client
+breaks on wss://). Each patient speaks recorded answers (`answers/`, macOS voice Rishi,
+made by `make_answers.py`) and the run reports, per step: patient wait, time to the first
+question, interviews completed or failed, and whether the server heard each answer right.
+
+Run it from a machine with a good uplink, e.g. the server itself (a slow uplink delivers
+the patients' audio in bursts and measures the network, not the app):
 
 ```bash
-.venv/bin/python make_answers.py
+rsync -az --include "answers/***" --include "answer_bank.py" --include "stage2.py" --exclude "*" \
+  -e "ssh -i ~/.ssh/<key>.pem" ./ ubuntu@<server-ip>:~/loadtest/
+ssh -i ~/.ssh/<key>.pem ubuntu@<server-ip> 'sudo docker run --rm --network host -v ~/loadtest:/lt -w /lt \
+  python:3.14-slim sh -c "pip install -q websockets==16.1.1 numpy==2.5.3 && \
+  python -u stage2.py https://<server-address> --steps 5,10,20 --step-seconds 180"'
 ```
 
-Watch the server (CPU, memory, retries, fallbacks, rate-limit errors) in one terminal:
+Watch the server (CPU, memory, planning queue and retries, failed extractions, fallbacks,
+rate limits) in another terminal:
 
 ```bash
 ./watch_server.sh ubuntu@<server-ip> ~/.ssh/<key>.pem
-```
-
-and run the patients in another:
-
-```bash
-mkdir -p results && STEPS="1,3,6,10" STEP_SECONDS=240 SPAWN_RATE=0.5 .venv/bin/locust -f locustfile.py \
-  RealPatient --host https://<server-address> --headless --only-summary --csv results/stage2
-.venv/bin/python summarize.py results/stage2_stats.csv   # server side: the watch_server.sh lines
 ```

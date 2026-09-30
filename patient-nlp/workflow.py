@@ -1,6 +1,9 @@
+import json
+
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Command, interrupt
 from patient_extraction import (
     start_conversation, plan_turn, extract_facts, apply_facts, enforce_safety,
     empty_case, end_conversation, NO_ANSWER, CHECKLIST_ITEMS, SAFETY_QUESTIONS,
@@ -22,10 +25,10 @@ import redis.asyncio as redis
 import traceback
 
 from latency_log import now, log_step, log_since
+from kafka_client import create_producer
 
 
 load_dotenv()
-
 
 redis_client = redis.Redis(
     host=os.getenv("REDIS_HOST"),
@@ -63,6 +66,9 @@ class State(TypedDict):
     interview_aborted: bool
     abort_reason: str
     case_taking_complete: bool
+    # the patient's check of the case before it is final (patient_review)
+    patient_review: dict | None     # {summary section label: text} as the patient saved it
+    review_confirmed: bool
     i: int
 
 
@@ -389,6 +395,27 @@ async def extract_data(state: State) -> dict:
     }
 
 
+async def prepare_review(state: State) -> dict:
+    """The questions are done: fold in the last answer's facts, so the patient reviews the whole case.
+    (A separate node from patient_review: a node that pauses is run again from the start
+    when it resumes, and the pending facts can only be merged once.)"""
+    if state["session_id"] in _pending_facts:
+        return {"extracted_data": await merge_pending_facts(
+            state["session_id"], state.get("extracted_data") or empty_case())}
+    return {}
+
+
+def patient_review(state: State) -> dict:
+    """Pause until the patient has checked the case and pressed Save (LangGraph interrupt).
+
+    The caller shows the interrupt's value (the case) to the patient and resumes the graph with
+    Command(resume={"confirmed": bool, "sections": {label: text} | None}). Only an interview
+    that ran to the end gets here; a timeout or an abort goes straight to finish_interview.
+    """
+    answer = interrupt({"case": state.get("extracted_data"), "checklist": state.get("checklist")})
+    return {"patient_review": answer.get("sections"), "review_confirmed": bool(answer.get("confirmed"))}
+
+
 def router_case_taking_complete(state: State) -> str:
     if state["case_taking_complete"]:
         return "END"
@@ -457,6 +484,22 @@ async def finish_interview(state: State) -> dict:
         update["extracted_data"] = await merge_pending_facts(
             state["session_id"], state.get("extracted_data") or empty_case()
         )
+        
+    producer = create_producer()
+    await producer.start()
+    
+    try:
+        await producer.send_and_wait(
+            "case-summary",
+            json.dumps({
+                "session_id": state["session_id"],
+                "patient_id": state["patient_id"],
+                "case": state.get("extracted_data") or empty_case(),
+                "review": state.get("patient_review"),  # the patient's corrections, if they saved any
+            }).encode("utf-8")
+        )
+    finally:
+        await producer.stop()
 
     conversation_id = state.get("openai_conversation_id")
     if not conversation_id:
@@ -532,6 +575,16 @@ workflow.add_node(
     finish_interview
 )
 
+workflow.add_node(
+    "prepare_review",
+    prepare_review
+)
+
+workflow.add_node(
+    "patient_review",
+    patient_review
+)
+
 
 workflow.add_edge(
     START,
@@ -543,9 +596,22 @@ workflow.add_conditional_edges(
     "extract_data",
     router_case_taking_complete,
     {
-        "END": "finish_interview",
+        "END": "prepare_review",
         "next_question": "next_question",
     }
+)
+
+
+# a finished interview: the patient checks the case, then it is final
+workflow.add_edge(
+    "prepare_review",
+    "patient_review"
+)
+
+
+workflow.add_edge(
+    "patient_review",
+    "finish_interview"
 )
 
 
@@ -697,6 +763,13 @@ async def main():
                 }
             }
         )
+
+        # the graph pauses at patient_review; a terminal run has no screen for it, so it goes on unreviewed
+        if chain.get_state({"configurable": {"thread_id": session_id}}).next:
+            result = await chain.ainvoke(
+                Command(resume={"confirmed": False, "sections": None}),
+                config={"configurable": {"thread_id": session_id}},
+            )
 
         # the whole interview runs inside this call now: nothing waits for JEV
         print()

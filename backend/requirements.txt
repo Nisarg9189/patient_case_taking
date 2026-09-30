@@ -1,3 +1,5 @@
 # installed into ../patient-nlp/.venv, which also has the interview's own dependencies
 fastapi==0.141.1
 uvicorn==0.54.0
+pyjwt[crypto]==2.15.1
+tzdata==2026.4

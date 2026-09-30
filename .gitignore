@@ -1,6 +1,8 @@
 # secrets: API keys live in patient-nlp/.env (local) and deploy/app.env (server)
 .env
 *.env
+.env.local
+*.env.local
 
 # local tools and environments
 .claude/
@@ -9,6 +11,9 @@ node_modules/
 __pycache__/
 *.pyc
 .DS_Store
+
+# patient data: stored case records (local runs)
+backend/cases/
 
 # generated
 frontend/dist/

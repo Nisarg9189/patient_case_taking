@@ -51,7 +51,9 @@ export type ServerEvent =
   | { type: 'transcript'; text: string }
   | { type: 'answer'; question: string; text: string }
   | { type: 'case'; case: CaseRecord; checklist: Checklist; remaining: number }
-  | { type: 'done'; case: CaseRecord | null; checklist: Checklist; aborted: boolean; reason: string | null }
+  | { type: 'done'; case: CaseRecord | null; checklist: Checklist; aborted: boolean; reason: string | null; case_id: string | null;
+      review: Record<string, string> | null }
+  | { type: 'review_case'; case: CaseRecord; checklist: Checklist }
   | { type: 'error'; text: string }
   | { type: 'status'; state: ConnectionState; text: string }
 
