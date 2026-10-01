@@ -121,6 +121,12 @@ class redis_db:
             pipe.expire(key, 3600)
             await pipe.execute()
 
+    async def mark_stored(self, case_id: str) -> None:
+        await self.r.set(f"case:{case_id}:stored", "1", ex=3600)
+
+    async def is_stored(self, case_id: str) -> bool:
+        return bool(await self.r.exists(f"case:{case_id}:stored"))
+
     async def add_flag(self, case_id: str, flag: dict) -> None:
         key = f"case:{case_id}:flags"
         async with self.r.pipeline(transaction=True) as pipe:

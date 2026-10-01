@@ -140,6 +140,8 @@ async def finish_interview(case_id: str) -> dict:
         print(f"finish_interview failed for {case_id}: {e!r}")
         await r.r.delete(f"case:{case_id}:finished")
         return {"ok": False, "error": "could not queue the summary"}
+
+    await r.mark_stored(case_id)                # the web app waits for this key to move the patient on
     return {"ok": True}
 
 
