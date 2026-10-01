@@ -58,6 +58,14 @@ from booking_api import router as booking_router  # noqa: E402
 from prescriptions import router as prescriptions_router  # noqa: E402
 import voice_agent  # noqa: E402
 
+# The MCP server the Foundry voice agent calls (patient-nlp/mcp_server.py) runs inside this app,
+# which is awake whenever a patient is talking. It is served only when MCP_SECRET is set.
+mcp_app = None
+if os.getenv("MCP_SECRET"):
+    from mcp_server import mcp  # noqa: E402
+
+    mcp_app = mcp.http_app(path="/mcp")
+
 import workflow  # noqa: E402
 from audio_io import BrowserAudio, register_audio, unregister_audio  # noqa: E402
 from gemini_voice_agent import ask_next_question_voice_agent, close_producer, close_spare_session  # noqa: E402
@@ -94,7 +102,8 @@ async def _summary_worker():
 @contextlib.asynccontextmanager
 async def lifespan(app):
     worker = asyncio.create_task(_summary_worker()) if os.getenv("RUN_SUMMARY_WORKER") == "1" else None
-    yield
+    async with mcp_app.lifespan(app) if mcp_app else contextlib.nullcontext():
+        yield
     if worker:
         worker.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -110,6 +119,8 @@ app.include_router(api_router)
 app.include_router(booking_router)
 app.include_router(prescriptions_router)
 app.include_router(voice_agent.router)
+if mcp_app:
+    app.mount("/mcp-server", mcp_app)  # the MCP endpoint is /mcp-server/mcp
 
 
 @app.get("/api/health")
