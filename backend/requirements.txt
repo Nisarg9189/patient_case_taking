@@ -3,3 +3,6 @@ fastapi==0.141.1
 uvicorn==0.54.0
 pyjwt[crypto]==2.15.1
 tzdata==2026.4
+azure-ai-voicelive>=1.2.0b4
+azure-identity
+aiohttp

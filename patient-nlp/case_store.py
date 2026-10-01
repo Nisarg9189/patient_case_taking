@@ -204,3 +204,6 @@ async def save_review(case_id, sections, patient_user_id):
 
 async def close():
     await db.close()
+
+if __name__ == "__main__":
+    pass

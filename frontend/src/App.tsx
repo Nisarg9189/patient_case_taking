@@ -5,6 +5,7 @@ import { MyDetails, MyPrescriptions } from './Prescriptions'
 import { PageHeader } from './PageHeader'
 import type { CaseRecord, Checklist, Symptom, TopicStatus } from './types'
 import { useInterview, type Phase } from './useInterview'
+import { AzureVoice } from './AzureVoice'
 
 const TOPICS: [string, string][] = [
   ['chief_complaint', 'Main complaint'],
@@ -108,6 +109,7 @@ export function InterviewView() {
             </div>
           )}
 
+          {phase === 'idle' && <AzureVoice />}
           {phase === 'done' && <BookVisit caseId={interview.caseId} />}
           {phase === 'idle' && <MyAppointments />}
           {(phase === 'idle' || phase === 'done') && <MyPrescriptions />}

@@ -56,6 +56,7 @@ import db  # noqa: E402
 from api import router as api_router  # noqa: E402
 from booking_api import router as booking_router  # noqa: E402
 from prescriptions import router as prescriptions_router  # noqa: E402
+import voice_agent  # noqa: E402
 
 import workflow  # noqa: E402
 from audio_io import BrowserAudio, register_audio, unregister_audio  # noqa: E402
@@ -100,6 +101,7 @@ async def lifespan(app):
             await worker
     await close_spare_session()
     await close_producer()
+    await voice_agent.close()
     await db.close()
 
 
@@ -107,11 +109,12 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(booking_router)
 app.include_router(prescriptions_router)
+app.include_router(voice_agent.router)
 
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True}
+    return {"ok": True, "azure_voice_agent": voice_agent.configured()}
 
 
 def _config(session_id):

@@ -1,8 +1,7 @@
-// Microphone capture (PCM16 mono 16 kHz, as Gemini expects) and question playback
+// Microphone capture (PCM16 mono, 16 kHz as Gemini expects, or 24 kHz for Azure Voice Live) and question playback
 // (PCM16 mono 24 kHz, as Gemini produces).
 
 const MIC_RATE = 16000
-const CHUNK_SAMPLES = 1600 // 100 ms at 16 kHz
 const SPEAKER_RATE = 24000
 
 const CAPTURE_WORKLET = `
@@ -26,10 +25,14 @@ export class Microphone {
 
   private onChunk: (pcm: ArrayBuffer) => void
   private onLevel: (level: number) => void
+  private rate: number
+  private chunkSamples: number // 100 ms
 
-  constructor(onChunk: (pcm: ArrayBuffer) => void, onLevel: (level: number) => void) {
+  constructor(onChunk: (pcm: ArrayBuffer) => void, onLevel: (level: number) => void, rate = MIC_RATE) {
     this.onChunk = onChunk
     this.onLevel = onLevel
+    this.rate = rate
+    this.chunkSamples = rate / 10
   }
 
   async start() {
@@ -63,18 +66,19 @@ export class Microphone {
     joined.set(samples, this.buffer.length)
     this.buffer = joined
 
-    // linear resampling from the device rate (usually 48 kHz) to 16 kHz
-    const step = this.context.sampleRate / MIC_RATE
-    while (this.buffer.length - this.position >= CHUNK_SAMPLES * step + 1) {
-      const out = new Int16Array(CHUNK_SAMPLES)
-      for (let i = 0; i < CHUNK_SAMPLES; i++) {
+    // linear resampling from the device rate (usually 48 kHz) to the wanted rate
+    const step = this.context.sampleRate / this.rate
+    const chunk = this.chunkSamples
+    while (this.buffer.length - this.position >= chunk * step + 1) {
+      const out = new Int16Array(chunk)
+      for (let i = 0; i < chunk; i++) {
         const x = this.position + i * step
         const i0 = Math.floor(x)
         const value = this.buffer[i0] + (this.buffer[i0 + 1] - this.buffer[i0]) * (x - i0)
         out[i] = Math.max(-32768, Math.min(32767, Math.round(value * 32767)))
       }
       this.onChunk(out.buffer)
-      this.position += CHUNK_SAMPLES * step
+      this.position += chunk * step
       const consumed = Math.floor(this.position)
       this.buffer = this.buffer.slice(consumed)
       this.position -= consumed
@@ -93,6 +97,7 @@ export class Microphone {
 export class QuestionPlayer {
   private context = new AudioContext()
   private nextStart = 0
+  private playing = new Set<AudioBufferSourceNode>()
 
   /** Must be called from a click handler, so the browser allows audio. */
   async unlock() {
@@ -109,11 +114,20 @@ export class QuestionPlayer {
     const source = this.context.createBufferSource()
     source.buffer = buffer
     source.connect(this.context.destination)
+    this.playing.add(source)
+    source.onended = () => this.playing.delete(source)
 
     // chunks are queued back to back so the question plays without gaps
     const start = Math.max(this.context.currentTime + 0.05, this.nextStart)
     source.start(start)
     this.nextStart = start + buffer.duration
+  }
+
+  /** Drops everything queued (the patient interrupted). */
+  clear() {
+    for (const source of this.playing) source.stop()
+    this.playing.clear()
+    this.nextStart = 0
   }
 
   /** Resolves when everything queued so far has finished playing. */

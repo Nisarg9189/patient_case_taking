@@ -8,14 +8,15 @@
 # GitHub Container Registry. The API keys come from ENV_FILE (default patient-nlp/.env) and
 # are stored as Container Apps secrets, never in the image; values are never printed.
 # Settings (environment variables, all optional):
-#   RESOURCE_GROUP  default patient-intake       LOCATION  default southeastasia (Singapore,
-#   ENVIRONMENT     default patient-intake-env             next to the Neon database)
+#   RESOURCE_GROUP  default patient-intake       LOCATION  default centralindia (close to the
+#   ENVIRONMENT     default patient-intake-env             patients; the Azure for Students
+#                                                          policy blocks southeastasia)
 #   APP             default patient-intake       IMAGE     default ghcr.io/nisarg9189/patient_case_taking:latest
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 RESOURCE_GROUP=${RESOURCE_GROUP:-patient-intake}
-LOCATION=${LOCATION:-southeastasia}
+LOCATION=${LOCATION:-centralindia}
 ENVIRONMENT=${ENVIRONMENT:-patient-intake-env}
 APP=${APP:-patient-intake}
 IMAGE=${IMAGE:-ghcr.io/nisarg9189/patient_case_taking:latest}

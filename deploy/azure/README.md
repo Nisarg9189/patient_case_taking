@@ -8,7 +8,7 @@ summary worker runs inside the app (`RUN_SUMMARY_WORKER=1`), so nothing else has
 ```
 GitHub (push to main) --Actions--> ghcr.io/nisarg9189/patient_case_taking:latest
                                             |
-Azure Container Apps (Southeast Asia) <-----+   pulls the image
+Azure Container Apps (Central India) <------+   pulls the image
    app + summary worker, secrets from patient-nlp/.env
    -> Neon Postgres + Neon Auth, Kafka, Redis, Gemini, OpenAI (all hosted elsewhere)
 ```
@@ -44,4 +44,7 @@ the new image and any changed keys.
   (live log stream; no Log Analytics needed).
 - **Cost**: the app itself is within the free grant for light use; each interview still
   costs Gemini/OpenAI usage (about ₹5).
+- **Region**: Azure for Students allows only some regions (this subscription: Central India,
+  India South Central, East Asia, Korea Central, UAE North); Central India is closest to the
+  patients, about 50-60 ms from the Neon database in Singapore.
 - **Delete everything**: `az group delete --name patient-intake`.
