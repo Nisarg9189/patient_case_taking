@@ -213,7 +213,8 @@ async def _from_browser(websocket, connection, interview):
 
 async def _to_browser(websocket, connection, interview):
     """Voice Live's events to the browser."""
-    from azure.ai.voicelive.models import InputTextContentPart, ServerEventType, SystemMessageItem
+    from azure.ai.voicelive.models import (InputTextContentPart, ItemType, MCPApprovalResponseRequestItem,
+                                           ServerEventType, SystemMessageItem)
 
     async def send(item):
         if isinstance(item, (bytes, bytearray)):
@@ -251,7 +252,12 @@ async def _to_browser(websocket, connection, interview):
 
     async for event in connection:
         kind = event.type
-        interview.events[str(getattr(kind, "value", kind))] += 1
+        label = str(getattr(kind, "value", kind))
+        if kind == ServerEventType.CONVERSATION_ITEM_CREATED:
+            label += f":{getattr(event.item.type, 'value', event.item.type)}"
+        interview.events[label] += 1
+        if interview.events[label] == 1:    # the first of each kind, as it happens (never any content)
+            print(f"Voice agent interview {interview.session_id[:8]}: first {label}")
         if kind in (ServerEventType.SESSION_CREATED, ServerEventType.SESSION_UPDATED) or kind == "conversation.created":
             await become_ready()
         elif kind == ServerEventType.RESPONSE_AUDIO_DELTA:
@@ -277,6 +283,12 @@ async def _to_browser(websocket, connection, interview):
         elif kind == ServerEventType.RESPONSE_CREATED:
             spoke = False
             await set_state("thinking")
+        elif kind == ServerEventType.CONVERSATION_ITEM_CREATED:
+            if event.item.type == ItemType.MCP_APPROVAL_REQUEST:
+                # the agent's tool is set to "ask first": nobody here could answer, so say yes (it is our own tool)
+                await connection.conversation.item.create(
+                    item=MCPApprovalResponseRequestItem(approval_request_id=event.item.id, approve=True))
+                print(f"Voice agent interview {interview.session_id[:8]}: approved a tool call")
         elif kind == ServerEventType.RESPONSE_DONE:
             if spoke:     # a response that only called a tool is followed by another one
                 await set_state("listening")
