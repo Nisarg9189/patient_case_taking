@@ -213,7 +213,7 @@ async def _from_browser(websocket, connection, interview):
 
 async def _to_browser(websocket, connection, interview):
     """Voice Live's events to the browser."""
-    from azure.ai.voicelive.models import InputTextContentPart, ServerEventType, UserMessageItem
+    from azure.ai.voicelive.models import InputTextContentPart, ServerEventType, SystemMessageItem
 
     async def send(item):
         if isinstance(item, (bytes, bytearray)):
@@ -237,14 +237,13 @@ async def _to_browser(websocket, connection, interview):
         if ready:
             return
         ready = True
-        # the agent passes this id to every tool call (its instructions say so); sent as the first
-        # message of the conversation, the way the playground test that worked gave it
+        # the agent passes this id to every tool call (its instructions say so)
         text = f"The case_id for this interview is {interview.session_id}."
-        if interview.language:
+        if interview.language and interview.language != "English":   # English: the message is just the case id, as before
             text += f" Speak with the patient in {interview.language} for the whole interview, from your first words."
             if speaks_first:   # the Foundry greeting is off: open with ours, in the patient's language
                 text += f' Open the conversation now by saying this greeting in {interview.language}: "{GREETING}"'
-        await connection.conversation.item.create(item=UserMessageItem(content=[InputTextContentPart(text=text)]))
+        await connection.conversation.item.create(item=SystemMessageItem(content=[InputTextContentPart(text=text)]))
         await send({"type": "ready"})
         await set_state("listening")
         if speaks_first:
