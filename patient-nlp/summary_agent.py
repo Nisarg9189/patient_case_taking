@@ -52,6 +52,9 @@ RULES
   no interpretation. Write "Flags: none" if there are none.
 - A section with nothing in the record is left out, except Allergies and Current
   medicines, which are always shown.
+- If the case record has "interview_transcript" (the questions asked and the patient's
+  answers, possibly not in English) in place of structured facts, use it as the record, and
+  write the summary in English.
 - Write for a clinician: plain, compact sentences, no filler, under 200 words.
 
 FORMAT (plain text, these headings, in this order)

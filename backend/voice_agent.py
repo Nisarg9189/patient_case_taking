@@ -37,6 +37,7 @@ import contextlib
 import json
 import os
 import uuid
+from collections import Counter
 
 from fastapi import APIRouter, HTTPException, WebSocket
 
@@ -117,7 +118,8 @@ async def close():
 
 
 class Interview:
-    """One interview: whose it is, and what to do when it ends early."""
+    """One interview: whose it is, what was said, and what to do when it ends without the agent
+    having stored it."""
 
     def __init__(self, session_id, patient, language=None):
         self.session_id = session_id
@@ -126,15 +128,27 @@ class Interview:
         self.last_audio = 0.0     # when the agent's voice last arrived (loop time)
         self.done_sent = False
         self.case_id = None
+        self.turns = []           # [{"question": agent's words, "answer": patient's words}]
+        self._agent_said = ""
+        self.events = Counter()   # kinds of Voice Live events seen (for the log, never their content)
+
+    def agent_said(self, text):
+        self._agent_said = f"{self._agent_said} {text}".strip()
+
+    def patient_said(self, text):
+        self.turns.append({"question": self._agent_said, "answer": text})
+        self._agent_said = ""
 
     async def store_partial(self, reason):
-        """The patient stopped before finish_interview: keep what the agent had collected as an
-        aborted case. Nothing is stored when nothing was collected, or when the agent finished
-        (or another stop stored it) first."""
+        """The interview ended without the agent's finish_interview: keep what it had collected as
+        an aborted case. If its tools saved nothing, the case holds the conversation itself and the
+        summary agent writes the summary from it. Nothing is stored when nothing was said, or when
+        the agent finished (or another stop stored it) first."""
         sid = self.session_id
         record, flags, checklist = await asyncio.gather(
             redis().get_record_notes(sid), redis().get_flags(sid), redis().get_checklist(sid))
-        if not (record.findings or flags):
+        collected = bool(record.findings or flags)
+        if not (collected or self.turns):
             return
         if not await redis().r.set(f"case:{sid}:finished", "1", nx=True, ex=3600):
             return
@@ -148,46 +162,34 @@ class Interview:
             case["chief_complaint"] = {"text": complaint, "evidence": complaint}
         case["interview_notes"] = notes
         case["important_reported_symptoms"] = flags
-
-        summary = {key: "; ".join(notes[key])[:case_store.MAX_SECTION_CHARS] if key in notes else None
-                   for key, _ in case_store.SUMMARY_SECTIONS if key != "flags"}
-        summary["flags"] = [f"{f['symptom']}: {f['evidence']}" for f in flags]
-        summary["presenting_complaint"] = summary["presenting_complaint"] or "Not recorded"
-        summary["allergies"] = summary["allergies"] or "Not asked"
-        summary["current_medicines"] = summary["current_medicines"] or "Not asked"
-        await case_store.save_original(sid, case, checklist, [], True, reason,
+        if not collected:
+            case["interview_transcript"] = self.turns
+        await case_store.save_original(sid, case, checklist, self.turns, True, reason,
                                        self.patient["user_id"], self.patient["org_id"])
-        await case_store.save_summary(sid, summary)
         self.case_id = sid
 
-
-async def _authenticate(websocket):
-    message = await asyncio.wait_for(websocket.receive_json(), AUTH_SECONDS)
-    if not isinstance(message, dict) or message.get("type") != "auth" or not message.get("token"):
-        raise HTTPException(401, "Please sign in to start the interview.")
-    user = await auth.user_from_token(message["token"])
-    clinics = sorted(user.orgs_with("patient"))
-    if not clinics:
-        raise HTTPException(403, "Only patients can take the intake interview.")
-    return {"user_id": user.id, "org_id": clinics[0]}, LANGUAGES.get(message.get("language"))
-
-
-async def _from_browser(websocket, connection, interview):
-    """The patient's microphone (and stop) to Voice Live."""
-    while True:
-        message = await websocket.receive()
-        if message["type"] == "websocket.disconnect":
-            return
-        if message.get("bytes"):
-            await connection.input_audio_buffer.append(audio=base64.b64encode(message["bytes"]).decode())
-        elif message.get("text"):
-            if json.loads(message["text"]).get("type") == "stop":
-                return
+        if collected:
+            summary = {key: "; ".join(notes[key])[:case_store.MAX_SECTION_CHARS] if key in notes else None
+                       for key, _ in case_store.SUMMARY_SECTIONS if key != "flags"}
+            summary["flags"] = [f"{f['symptom']}: {f['evidence']}" for f in flags]
+            summary["presenting_complaint"] = summary["presenting_complaint"] or "Not recorded"
+            summary["allergies"] = summary["allergies"] or "Not asked"
+            summary["current_medicines"] = summary["current_medicines"] or "Not asked"
+            await case_store.save_summary(sid, summary)
+        else:
+            from kafka_client import create_producer
+            producer = create_producer()
+            await producer.start()
+            try:
+                await producer.send_and_wait("case-summary", json.dumps(
+                    {"session_id": sid, "patient_id": sid, "case": case, "review": None}).encode("utf-8"))
+            finally:
+                await producer.stop()
 
 
 async def _to_browser(websocket, connection, interview):
     """Voice Live's events to the browser."""
-    from azure.ai.voicelive.models import InputTextContentPart, ServerEventType, SystemMessageItem
+    from azure.ai.voicelive.models import InputTextContentPart, ServerEventType, UserMessageItem
 
     async def send(item):
         if isinstance(item, (bytes, bytearray)):
@@ -211,13 +213,14 @@ async def _to_browser(websocket, connection, interview):
         if ready:
             return
         ready = True
-        # the agent passes this id to every tool call (its instructions say so)
+        # the agent passes this id to every tool call (its instructions say so); sent as the first
+        # message of the conversation, the way the playground test that worked gave it
         text = f"The case_id for this interview is {interview.session_id}."
         if interview.language:
             text += f" Speak with the patient in {interview.language} for the whole interview, from your first words."
             if speaks_first:   # the Foundry greeting is off: open with ours, in the patient's language
                 text += f' Open the conversation now by saying this greeting in {interview.language}: "{GREETING}"'
-        await connection.conversation.item.create(item=SystemMessageItem(content=[InputTextContentPart(text=text)]))
+        await connection.conversation.item.create(item=UserMessageItem(content=[InputTextContentPart(text=text)]))
         await send({"type": "ready"})
         await set_state("listening")
         if speaks_first:
@@ -225,6 +228,7 @@ async def _to_browser(websocket, connection, interview):
 
     async for event in connection:
         kind = event.type
+        interview.events[str(getattr(kind, "value", kind))] += 1
         if kind in (ServerEventType.SESSION_CREATED, ServerEventType.SESSION_UPDATED) or kind == "conversation.created":
             await become_ready()
         elif kind == ServerEventType.RESPONSE_AUDIO_DELTA:
@@ -235,10 +239,12 @@ async def _to_browser(websocket, connection, interview):
         elif kind == ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DONE:
             text = (event.get("transcript") or "").strip()
             if text:
+                interview.agent_said(text)
                 await send({"type": "transcript", "role": "agent", "text": text})
         elif kind == ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
             text = (event.get("transcript") or "").strip()
             if text:
+                interview.patient_said(text)
                 await send({"type": "transcript", "role": "patient", "text": text})
         elif kind == ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STARTED:
             await send({"type": "interrupted"})
@@ -332,6 +338,7 @@ async def voice_agent_socket(websocket: WebSocket):
         with contextlib.suppress(Exception):
             await websocket.send_text(json.dumps({"type": "error", "text": "The voice agent could not be reached."}))
     finally:
+        print(f"Voice agent interview {session_id[:8]} events: {dict(interview.events)}")
         if not interview.done_sent:
             try:
                 await interview.store_partial("Stopped before the agent finished.")
