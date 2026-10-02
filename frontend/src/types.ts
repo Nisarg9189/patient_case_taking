@@ -42,22 +42,3 @@ export interface CaseRecord {
 
 export type TopicStatus = 'covered' | 'unknown_or_declined' | 'not_relevant' | 'pending'
 export type Checklist = Record<string, TopicStatus>
-
-export type ServerEvent =
-  | { type: 'question'; text: string }
-  | { type: 'question_audio_end' }
-  | { type: 'listening' }
-  | { type: 'stopped_listening' }
-  | { type: 'transcript'; text: string }
-  | { type: 'answer'; question: string; text: string }
-  | { type: 'case'; case: CaseRecord; checklist: Checklist; remaining: number }
-  | { type: 'done'; case: CaseRecord | null; checklist: Checklist; aborted: boolean; reason: string | null; case_id: string | null;
-      review: Record<string, string> | null }
-  | { type: 'review_case'; case: CaseRecord; checklist: Checklist }
-  | { type: 'error'; text: string }
-  | { type: 'status'; state: ConnectionState; text: string }
-
-// reconnecting: the question is asked again on a new voice connection
-// recording / transcribing: the voice connection dropped mid-answer; the answer is still
-// recorded and transcribed separately, so the patient does not have to repeat it
-export type ConnectionState = 'reconnecting' | 'recording' | 'transcribing'

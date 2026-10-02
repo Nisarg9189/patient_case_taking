@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { BookVisit, MyAppointments } from './BookVisit'
+import { MyAppointments } from './BookVisit'
 import { MyDetails, MyPrescriptions } from './Prescriptions'
 import { PageHeader } from './PageHeader'
 import type { CaseRecord, Checklist, Symptom, TopicStatus } from './types'
-import { useInterview, type Phase } from './useInterview'
 import { AzureVoice } from './AzureVoice'
 
 const TOPICS: [string, string][] = [
@@ -31,124 +29,21 @@ const STATUS_LABEL: Record<TopicStatus, string> = {
   not_relevant: 'Not relevant',
 }
 
-const PHASE_LABEL: Record<Phase, string> = {
-  idle: 'Ready',
-  connecting: 'Connecting…',
-  speaking: 'Asking',
-  listening: 'Listening',
-  thinking: 'Next question…',
-  reconnecting: 'Reconnecting…',
-  reviewing: 'Check your answers',
-  done: 'Finished',
-  error: 'Stopped',
-}
-
-// the patient's page: the spoken interview and their case summary
+// the patient's page: the spoken interview with the voice agent, and their visits and prescriptions
 export function InterviewView() {
-  const interview = useInterview()
-  const { phase } = interview
-  const active = ['connecting', 'speaking', 'listening', 'thinking', 'reconnecting'].includes(phase)
-
   return (
     <div className="page">
-      <PageHeader tabs={[['interview', 'Patient intake']]} active="interview"
-                  right={<span className={`phase phase-${phase}`}>{PHASE_LABEL[phase]}</span>} />
+      <PageHeader tabs={[['interview', 'Patient intake']]} active="interview" />
       <p className="page-intro">A short spoken interview before your appointment</p>
-
-      {interview.notice && <div className="notice">{interview.notice}</div>}
-      {interview.review && <ReviewDialog record={interview.review} onSave={interview.confirmReview} />}
-      {interview.connection && active && (
-        <div className={`connection connection-${interview.connection.state}`} role="status">
-          <span className="spinner" aria-hidden="true" />
-          {interview.connection.text}
-        </div>
-      )}
 
       <main className="layout">
         <section className="conversation">
-          {phase === 'idle' || phase === 'error' ? (
-            <div className="card intro">
-              <h2>{phase === 'error' ? 'The interview stopped' : 'Before we start'}</h2>
-              <p>
-                You will be asked a few questions out loud. Answer in your own words; the next question
-                starts shortly after you finish speaking.
-              </p>
-              <p className="muted">Your browser will ask for microphone access.</p>
-              <button className="primary" onClick={interview.start}>
-                {phase === 'error' ? 'Start again' : 'Start interview'}
-              </button>
-            </div>
-          ) : phase === 'done' ? (
-            <div className="card intro">
-              <h2>Thank you</h2>
-              <p>{interview.ending ?? 'The interview is complete. Your answers are summarised under "Case so far".'}</p>
-              <p>Now choose the hospital and time for your visit below.</p>
-              <button className="secondary" onClick={interview.start}>
-                Start a new interview
-              </button>
-            </div>
-          ) : (
-            <div className={`card current current-${phase}`}>
-              <div className="current-label">
-                {phase === 'connecting' ? 'Connecting…' : phase === 'listening' ? 'Your answer' : 'Question'}
-              </div>
-              <p className="question">{interview.question || 'Preparing the first question…'}</p>
-              {phase === 'listening' || phase === 'thinking' ? (
-                <div className="answer-box">
-                  {phase === 'listening' && <LevelMeter level={interview.level} />}
-                  <p className={interview.transcript ? 'transcript' : 'transcript placeholder'}>
-                    {interview.transcript || 'Speak now…'}
-                  </p>
-                </div>
-              ) : null}
-              {active && (
-                <button className="secondary" onClick={interview.stop}>
-                  End interview
-                </button>
-              )}
-            </div>
-          )}
-
-          {phase === 'idle' && <AzureVoice />}
-          {phase === 'done' && <BookVisit caseId={interview.caseId} />}
-          {phase === 'idle' && <MyAppointments />}
-          {(phase === 'idle' || phase === 'done') && <MyPrescriptions />}
-          {phase === 'idle' && <MyDetails />}
-
-          {interview.turns.length > 0 && (
-            <div className="card">
-              <h3>Conversation</h3>
-              <ol className="turns">
-                {interview.turns.map((turn, index) => (
-                  <li key={index}>
-                    <p className="turn-question">{turn.question}</p>
-                    <p className="turn-answer">{turn.answer}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
+          <AzureVoice />
+          <MyAppointments />
+          <MyPrescriptions />
+          <MyDetails />
         </section>
-
-        <aside className="summary">
-          <CaseSummary
-            key={interview.caseId ?? 'live'}
-            record={interview.caseRecord}
-            caseId={interview.caseId}
-            onSave={interview.saveReview}
-            initialReview={interview.confirmed}
-          />
-          <ChecklistCard checklist={interview.checklist} />
-        </aside>
       </main>
-    </div>
-  )
-}
-
-function LevelMeter({ level }: { level: number }) {
-  return (
-    <div className="meter" aria-label="Microphone level">
-      <div className="meter-fill" style={{ width: `${Math.round(level * 100)}%` }} />
     </div>
   )
 }
@@ -220,142 +115,6 @@ export function sectionTexts(record: CaseRecord): Record<string, string> {
     Vaccinations: record.vaccinations.map(vaccinationText).join('\n'),
     'Said no to': record.negative_answers.map((n) => TOPIC_LABEL[n.item] ?? n.item).join(', '),
   }
-}
-
-function CaseSummary({
-  record,
-  caseId,
-  onSave,
-  initialReview,
-}: {
-  record: CaseRecord | null
-  caseId: string | null // set once the interview has ended and been stored: editing is allowed
-  onSave: (sections: Record<string, string>) => Promise<string>
-  initialReview?: Record<string, string> | null // what the patient saved in the review popup
-}) {
-  const [editing, setEditing] = useState(false)
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [reviewed, setReviewed] = useState<Record<string, string> | null>(initialReview ?? null)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
-
-  if (!record) {
-    return (
-      <div className="card">
-        <h3>Case so far</h3>
-        <p className="muted">Filled in as the patient answers.</p>
-      </div>
-    )
-  }
-
-  const startEditing = () => {
-    setDrafts(reviewed ?? sectionTexts(record))
-    setEditing(true)
-    setMessage(null)
-  }
-
-  const save = async () => {
-    setSaving(true)
-    setMessage(null)
-    try {
-      const savedAt = await onSave(drafts)
-      setReviewed(drafts)
-      setEditing(false)
-      setMessage({ text: `Saved at ${new Date(savedAt).toLocaleTimeString()}`, error: false })
-    } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : 'Could not save.', error: true })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="card">
-      <h3>
-        Case so far {reviewed && !editing && <span className="tag tag-reviewed">Reviewed</span>}
-      </h3>
-
-      {editing ? (
-        <div className="case-edit">
-          {SECTIONS.map((label) => (
-            <label key={label} className="edit-row">
-              <span className="row-label">{label}</span>
-              <textarea
-                value={drafts[label] ?? ''}
-                rows={Math.max(1, (drafts[label] ?? '').split('\n').length)}
-                onChange={(event) => setDrafts({ ...drafts, [label]: event.target.value })}
-              />
-            </label>
-          ))}
-        </div>
-      ) : reviewed ? (
-        SECTIONS.filter((label) => reviewed[label]).map((label) => (
-          <Row key={label} label={label}>
-            <span className="pre-line">{reviewed[label]}</span>
-          </Row>
-        ))
-      ) : (
-        <CaseDetails record={record} />
-      )}
-
-      {caseId && (
-        <div className="buttons">
-          <button className="edit-button" onClick={editing ? () => setEditing(false) : startEditing} disabled={saving}>
-            {editing ? 'Cancel' : 'Edit'}
-          </button>
-          <button className="save-button" onClick={save} disabled={!editing || saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      )}
-      {message && (
-        <p className={message.error ? 'review-note review-error' : 'review-note'} role="status">
-          {message.text}
-        </p>
-      )}
-    </div>
-  )
-}
-
-// The questions are done: the patient checks what was recorded, corrects it, and must press
-// Save before the interview finishes (the graph waits at workflow.patient_review).
-function ReviewDialog({ record, onSave }: { record: CaseRecord; onSave: (sections: Record<string, string>) => void }) {
-  const [drafts, setDrafts] = useState(() => sectionTexts(record))
-  const first = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    first.current?.focus()
-  }, [])
-
-  return (
-    <div className="modal-backdrop">
-      <div className="card modal" role="dialog" aria-modal="true" aria-labelledby="review-title">
-        <h2 id="review-title">Please check your answers</h2>
-        <p className="muted">
-          This is what we recorded from the interview. Correct anything that is wrong or missing, then press Save to
-          finish.
-        </p>
-        <div className="case-edit">
-          {SECTIONS.map((label, index) => (
-            <label key={label} className="edit-row">
-              <span className="row-label">{label}</span>
-              <textarea
-                ref={index === 0 ? first : undefined}
-                value={drafts[label] ?? ''}
-                rows={Math.max(1, (drafts[label] ?? '').split('\n').length)}
-                onChange={(event) => setDrafts({ ...drafts, [label]: event.target.value })}
-              />
-            </label>
-          ))}
-        </div>
-        <div className="buttons">
-          <button className="save-button" onClick={() => onSave(drafts)}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // the case as the interview recorded it

@@ -14,7 +14,8 @@ summary, and sets the Redis key case:<id>:stored, which is how this server learn
 interview is over. If the patient stops early, what was collected is stored here as an aborted case.
 
 Browser -> server
-  {"type": "auth", "token"}   first message: the patient's Neon Auth JWT
+  {"type": "auth", "token", "language"}  first message: the patient's Neon Auth JWT and the
+                              language they picked ("en", "hi", "gu", "mr"; see LANGUAGES)
   binary                      microphone audio, PCM16 mono 24 kHz, sent all the time (the
                               service detects speech itself and lets the patient interrupt)
   {"type": "stop"}            end now (what was collected is kept)
@@ -51,6 +52,12 @@ MAX_SECONDS = 20 * 60          # one interview never runs longer (the service bi
 FINISH_POLL_SECONDS = 1        # how often to look for the stored case in Redis
 GOODBYE_START_SECONDS = 8      # after the case is stored, how long to wait for the goodbye to start
 GOODBYE_QUIET_SECONDS = 2      # the goodbye is over when no agent audio has come for this long
+
+# the languages a patient can pick before the interview (browser code -> name the agent is told)
+LANGUAGES = {"en": "English", "hi": "Hindi", "gu": "Gujarati", "mr": "Marathi"}
+
+GREETING = ("Hello, I'm the clinic's voice assistant. I'll ask you a few questions about your health, so the "
+            "doctor is ready before your visit. It takes a few minutes. What brings you in today?")
 
 _credential = None
 _redis = None
@@ -109,9 +116,10 @@ async def close():
 class Interview:
     """One interview: whose it is, and what to do when it ends early."""
 
-    def __init__(self, session_id, patient):
+    def __init__(self, session_id, patient, language=None):
         self.session_id = session_id
         self.patient = patient
+        self.language = language   # name of the language the patient picked, or None
         self.last_audio = 0.0     # when the agent's voice last arrived (loop time)
         self.done_sent = False
         self.case_id = None
@@ -158,7 +166,7 @@ async def _authenticate(websocket):
     clinics = sorted(user.orgs_with("patient"))
     if not clinics:
         raise HTTPException(403, "Only patients can take the intake interview.")
-    return {"user_id": user.id, "org_id": clinics[0]}
+    return {"user_id": user.id, "org_id": clinics[0]}, LANGUAGES.get(message.get("language"))
 
 
 async def _from_browser(websocket, connection, interview):
@@ -193,8 +201,12 @@ async def _to_browser(websocket, connection, interview):
             return
         ready = True
         # the agent passes this id to every tool call (its instructions say so)
-        await connection.conversation.item.create(item=SystemMessageItem(content=[
-            InputTextContentPart(text=f"The case_id for this interview is {interview.session_id}.")]))
+        text = f"The case_id for this interview is {interview.session_id}."
+        if interview.language:
+            text += f" Speak with the patient in {interview.language} for the whole interview, from your first words."
+            if speaks_first:   # the Foundry greeting is off: open with ours, in the patient's language
+                text += f' Open the conversation now by saying this greeting in {interview.language}: "{GREETING}"'
+        await connection.conversation.item.create(item=SystemMessageItem(content=[InputTextContentPart(text=text)]))
         await send({"type": "ready"})
         if speaks_first:
             await connection.response.create()   # the agent's instructions open the interview
@@ -254,7 +266,7 @@ async def voice_agent_socket(websocket: WebSocket):
             await websocket.close(code=code)
 
     try:
-        patient = await _authenticate(websocket)
+        patient, language = await _authenticate(websocket)
     except HTTPException as e:
         detail = e.detail["message"] if isinstance(e.detail, dict) else e.detail
         return await refuse(detail, 4403 if e.status_code == 403 else 4401)
@@ -271,7 +283,7 @@ async def voice_agent_socket(websocket: WebSocket):
     except Exception:
         return await refuse("The interview could not be started. Please try again.", 4500)
     
-    interview = Interview(session_id, patient)
+    interview = Interview(session_id, patient, language)
     db.audit_later(patient["user_id"], "start_voice_agent_interview", case_id=session_id, org_id=patient["org_id"])
 
     try:

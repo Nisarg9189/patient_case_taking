@@ -1,27 +1,31 @@
 # Patient case taking
 
-A spoken intake interview: the patient answers questions out loud in the browser, and the
-answers are turned into a structured case record (complaint, symptoms, medicines,
-allergies, history, vitals, …) for a clinician.
+A spoken intake interview: the patient talks with a voice assistant in the browser, in the
+language they pick (English, Hindi, Gujarati or Marathi), and their answers become a case
+summary for a clinician.
 
-- **Voice**: Gemini Live asks each question and transcribes the answer (Indian English).
-  If Gemini stops responding mid-answer, the answer recorded on the server is transcribed
-  with OpenAI `gpt-4o-transcribe` instead.
-- **Planning** (which question next, is the checklist covered): Gemini
-  `gemini-3.8-flash`, streamed so the next question is used before the plan is finished.
-- **Fact extraction** (the case record): Gemini `gemini-3.8-flash` with a strict Pydantic
-  schema, in the background.
-- **Workflow**: LangGraph; code-level safety checks for allergies and current medicines.
+- **Voice**: an Azure AI Foundry voice agent (speech recognition, the model, and the voice are
+  set in Foundry). The browser talks to `/ws/voice-agent`; the server connects to the agent with
+  its own Azure identity, so the browser never sees Azure.
+- **Tools**: the agent saves the interview through an MCP server (`patient-nlp/mcp_server.py`,
+  served by the app at `/mcp-server/mcp`, protected by `MCP_SECRET`): `record_answer`,
+  `flag_urgent`, `get_interview_checklist`, `get_current_case_record`, `finish_interview`.
+  The interview lives in Redis while it runs; `finish_interview` stores it in Neon and sends
+  it to Kafka.
+- **Summary**: `patient-nlp/summary_agent.py` (Gemini `gemini-3.8-flash`, strict schema) turns
+  the stored interview into the clinician summary; the app runs it when `RUN_SUMMARY_WORKER=1`.
+- **Safety**: `finish_interview` refuses until allergies and current medicines have been
+  asked, unless a red flag was raised.
 
 ## Layout
 
 | Folder | What |
 |---|---|
-| `patient-nlp/` | The interview: workflow, voice agent, planning and extraction |
-| `backend/` | FastAPI server: one interview per WebSocket at `/ws/interview` |
-| `frontend/` | React + Vite page (microphone, question audio, live case summary) |
-| `deploy/` | Docker + Caddy (HTTPS) deployment to one EC2 server — see its README |
-| `loadtest/` | Load tests: stage 1 with fake providers (Locust), stage 2 against the deployed server with real providers — see its README |
+| `patient-nlp/` | The MCP tools the voice agent calls, the summary agent, and the database/Kafka/Redis code |
+| `backend/` | FastAPI server: the voice agent interview at `/ws/voice-agent`, the MCP server, cases, appointments, prescriptions |
+| `frontend/` | React + Vite page (language picker, microphone, the agent's voice, booking) |
+| `deploy/` | Docker + Caddy (HTTPS) deployment to one EC2 server, and Azure Container Apps — see their READMEs |
+| `loadtest/` | Load tests of the earlier question-by-question interview (Gemini Live); they no longer run against this server |
 
 ## Run locally
 

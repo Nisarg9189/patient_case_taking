@@ -10,15 +10,23 @@ interface Line {
 
 type Phase = 'idle' | 'connecting' | 'live' | 'done' | 'error'
 
-// The interview by the Azure Foundry voice agent (the server proxies Voice Live): the patient can
-// talk over the agent, and the agent saves what it hears through tools. Shown only when the
-// server has the agent set up.
+// the languages the agent can interview in (codes match LANGUAGES in backend/voice_agent.py)
+const LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिन्दी (Hindi)' },
+  { code: 'gu', label: 'ગુજરાતી (Gujarati)' },
+  { code: 'mr', label: 'मराठी (Marathi)' },
+]
+
+// The patient's interview, by the Azure Foundry voice agent (the server proxies Voice Live): the
+// patient can talk over the agent, and the agent saves their answers through its tools.
 export function AzureVoice() {
-  const [enabled, setEnabled] = useState(false)
+  const [enabled, setEnabled] = useState<boolean | null>(null) // null until the server has answered
   const [phase, setPhase] = useState<Phase>('idle')
   const [lines, setLines] = useState<Line[]>([])
   const [caseId, setCaseId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [language, setLanguage] = useState('en')
 
   const socket = useRef<WebSocket | null>(null)
   const microphone = useRef<Microphone | null>(null)
@@ -66,7 +74,7 @@ export function AzureVoice() {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/voice-agent`)
     ws.binaryType = 'arraybuffer'
     socket.current = ws
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token }))
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token, language }))
 
     // Voice Live takes 24 kHz and listens all the time: it hears the patient over the agent
     microphone.current = new Microphone((pcm) => ws.readyState === WebSocket.OPEN && ws.send(pcm), () => {}, 24000)
@@ -106,26 +114,44 @@ export function AzureVoice() {
       }
       void release()
     }
-  }, [release])
+  }, [language, release])
 
   const stop = useCallback(() => {
     socket.current?.send(JSON.stringify({ type: 'stop' }))
   }, [])
 
-  if (!enabled) return null
+  if (enabled === null) return null
+  if (!enabled) {
+    return (
+      <div className="card intro">
+        <h3>The voice interview is not available right now</h3>
+        <p>Please try again a little later.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="card intro">
       {notice && <div className="notice">{notice}</div>}
       {phase === 'idle' || phase === 'error' ? (
         <>
-          <h3>Talk to the Azure voice agent</h3>
+          <h3>Start your interview</h3>
           <p>
-            A conversation with the clinic's voice assistant: you can interrupt it, and it saves your answers as it
-            goes. Your browser will ask for microphone access.
+            You will talk with the clinic's voice assistant. Answer in your own words; you can interrupt it at any
+            time. Your browser will ask for microphone access.
           </p>
+          <label className="field">
+            <span>Language of the conversation</span>
+            <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className="secondary" onClick={start}>
-            {phase === 'error' ? 'Try the voice agent again' : 'Start with the voice agent'}
+            {phase === 'error' ? 'Try again' : 'Start interview'}
           </button>
         </>
       ) : phase === 'done' ? (
@@ -134,12 +160,12 @@ export function AzureVoice() {
           <p>The doctor will see what you told the assistant. Now choose the hospital and time for your visit.</p>
           {caseId && <BookVisit caseId={caseId} />}
           <button className="secondary" onClick={start}>
-            Start a new conversation
+            Start a new interview
           </button>
         </>
       ) : (
         <>
-          <h3>{phase === 'connecting' ? 'Connecting…' : 'The voice agent is listening'}</h3>
+          <h3>{phase === 'connecting' ? 'Connecting…' : 'The assistant is listening'}</h3>
           <ol className="turns">
             {lines.map((line, index) => (
               <li key={index}>
@@ -148,7 +174,7 @@ export function AzureVoice() {
             ))}
           </ol>
           <button className="secondary" onClick={stop}>
-            End the conversation
+            End the interview
           </button>
         </>
       )}
