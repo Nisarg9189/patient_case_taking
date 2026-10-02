@@ -123,6 +123,11 @@ export class QuestionPlayer {
     this.nextStart = start + buffer.duration
   }
 
+  /** True while queued audio is still playing. */
+  get isPlaying() {
+    return this.nextStart > this.context.currentTime
+  }
+
   /** Drops everything queued (the patient interrupted). */
   clear() {
     for (const source of this.playing) source.stop()

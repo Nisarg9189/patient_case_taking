@@ -25,6 +25,9 @@ Server -> browser
   {"type": "ready"}           the agent is connected and will speak first
   {"type": "transcript", "role": "agent" | "patient", "text"}
   {"type": "interrupted"}     the patient started speaking: drop the queued agent audio
+  {"type": "status", "state"} what the agent is doing besides speaking: "listening" (waiting for
+                              or hearing the patient), "thinking", "saving" (one of its tools is
+                              running). The browser shows "speaking" itself, while audio plays.
   {"type": "done", "case_id", "aborted", "reason"}
   {"type": "error", "text"}
 """
@@ -194,6 +197,14 @@ async def _to_browser(websocket, connection, interview):
 
     speaks_first = os.getenv("AGENT_SPEAKS_FIRST", "0") == "1"
     ready = False
+    state = None          # last status sent to the browser
+    spoke = False         # the current response has produced audio
+
+    async def set_state(new):
+        nonlocal state
+        if new != state:
+            state = new
+            await send({"type": "status", "state": new})
 
     async def become_ready():
         nonlocal ready
@@ -208,6 +219,7 @@ async def _to_browser(websocket, connection, interview):
                 text += f' Open the conversation now by saying this greeting in {interview.language}: "{GREETING}"'
         await connection.conversation.item.create(item=SystemMessageItem(content=[InputTextContentPart(text=text)]))
         await send({"type": "ready"})
+        await set_state("listening")
         if speaks_first:
             await connection.response.create()   # the agent's instructions open the interview
 
@@ -216,6 +228,7 @@ async def _to_browser(websocket, connection, interview):
         if kind in (ServerEventType.SESSION_CREATED, ServerEventType.SESSION_UPDATED) or kind == "conversation.created":
             await become_ready()
         elif kind == ServerEventType.RESPONSE_AUDIO_DELTA:
+            spoke = True
             interview.last_audio = asyncio.get_running_loop().time()
             delta = event.delta
             await send(base64.b64decode(delta) if isinstance(delta, str) else delta)
@@ -229,6 +242,19 @@ async def _to_browser(websocket, connection, interview):
                 await send({"type": "transcript", "role": "patient", "text": text})
         elif kind == ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STARTED:
             await send({"type": "interrupted"})
+            await set_state("listening")
+        elif kind == ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STOPPED:
+            await set_state("thinking")
+        elif kind == ServerEventType.RESPONSE_CREATED:
+            spoke = False
+            await set_state("thinking")
+        elif kind == ServerEventType.RESPONSE_DONE:
+            if spoke:     # a response that only called a tool is followed by another one
+                await set_state("listening")
+        elif kind == ServerEventType.RESPONSE_MCP_CALL_IN_PROGRESS:
+            await set_state("saving")
+        elif kind in (ServerEventType.RESPONSE_MCP_CALL_COMPLETED, ServerEventType.RESPONSE_MCP_CALL_FAILED):
+            await set_state("thinking")
         elif kind == ServerEventType.ERROR:
             print(f"\n⚠️ Voice Live error: {event.error.message}")
             await send({"type": "error", "text": "The voice agent had a problem. Please try again."})

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Microphone, QuestionPlayer } from './audio'
 import { getToken } from './auth'
 import { BookVisit } from './BookVisit'
+import { VoiceStatus, type VoiceState } from './VoiceStatus'
 
 interface Line {
   role: 'agent' | 'patient'
@@ -27,6 +28,8 @@ export function AzureVoice() {
   const [caseId, setCaseId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [language, setLanguage] = useState('en')
+  const [agentState, setAgentState] = useState<Exclude<VoiceState, 'speaking'>>('listening')
+  const [speaking, setSpeaking] = useState(false) // the agent's voice is playing
 
   const socket = useRef<WebSocket | null>(null)
   const microphone = useRef<Microphone | null>(null)
@@ -39,6 +42,15 @@ export function AzureVoice() {
       .then((h: { azure_voice_agent?: boolean }) => setEnabled(Boolean(h.azure_voice_agent)))
       .catch(() => setEnabled(false))
   }, [])
+
+  useEffect(() => {
+    if (phase !== 'live') return
+    const timer = setInterval(() => setSpeaking(player.current?.isPlaying ?? false), 150)
+    return () => {
+      clearInterval(timer)
+      setSpeaking(false)
+    }
+  }, [phase])
 
   const release = useCallback(async () => {
     await microphone.current?.stop()
@@ -57,6 +69,7 @@ export function AzureVoice() {
     setLines([])
     setCaseId(null)
     setNotice(null)
+    setAgentState('listening')
     finished.current = false
 
     player.current = new QuestionPlayer()
@@ -97,6 +110,7 @@ export function AzureVoice() {
       if (event.type === 'ready') setPhase('live')
       else if (event.type === 'transcript') setLines((old) => [...old, { role: event.role, text: event.text }])
       else if (event.type === 'interrupted') player.current?.clear()
+      else if (event.type === 'status') setAgentState(event.state)
       else if (event.type === 'error') {
         finished.current = true
         setNotice(event.text)
@@ -165,7 +179,8 @@ export function AzureVoice() {
         </>
       ) : (
         <>
-          <h3>{phase === 'connecting' ? 'Connecting…' : 'The assistant is listening'}</h3>
+          <h3>{phase === 'connecting' ? 'Connecting…' : 'Your interview'}</h3>
+          {phase === 'live' && <VoiceStatus state={speaking ? 'speaking' : agentState} />}
           <ol className="turns">
             {lines.map((line, index) => (
               <li key={index}>
