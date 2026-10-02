@@ -251,9 +251,10 @@ async def _to_browser(websocket, connection, interview):
         elif kind == ServerEventType.RESPONSE_DONE:
             if spoke:     # a response that only called a tool is followed by another one
                 await set_state("listening")
-        elif kind == ServerEventType.RESPONSE_MCP_CALL_IN_PROGRESS:
+        elif kind in (ServerEventType.RESPONSE_MCP_CALL_IN_PROGRESS, "response.foundry_agent_call.in_progress"):
             await set_state("saving")
-        elif kind in (ServerEventType.RESPONSE_MCP_CALL_COMPLETED, ServerEventType.RESPONSE_MCP_CALL_FAILED):
+        elif kind in (ServerEventType.RESPONSE_MCP_CALL_COMPLETED, ServerEventType.RESPONSE_MCP_CALL_FAILED,
+                      "response.foundry_agent_call.completed", "response.foundry_agent_call.failed"):
             await set_state("thinking")
         elif kind == ServerEventType.ERROR:
             print(f"\n⚠️ Voice Live error: {event.error.message}")
