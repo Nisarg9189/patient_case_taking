@@ -187,6 +187,30 @@ class Interview:
                 await producer.stop()
 
 
+async def _authenticate(websocket):
+    message = await asyncio.wait_for(websocket.receive_json(), AUTH_SECONDS)
+    if not isinstance(message, dict) or message.get("type") != "auth" or not message.get("token"):
+        raise HTTPException(401, "Please sign in to start the interview.")
+    user = await auth.user_from_token(message["token"])
+    clinics = sorted(user.orgs_with("patient"))
+    if not clinics:
+        raise HTTPException(403, "Only patients can take the intake interview.")
+    return {"user_id": user.id, "org_id": clinics[0]}, LANGUAGES.get(message.get("language"))
+
+
+async def _from_browser(websocket, connection, interview):
+    """The patient's microphone (and stop) to Voice Live."""
+    while True:
+        message = await websocket.receive()
+        if message["type"] == "websocket.disconnect":
+            return
+        if message.get("bytes"):
+            await connection.input_audio_buffer.append(audio=base64.b64encode(message["bytes"]).decode())
+        elif message.get("text"):
+            if json.loads(message["text"]).get("type") == "stop":
+                return
+
+
 async def _to_browser(websocket, connection, interview):
     """Voice Live's events to the browser."""
     from azure.ai.voicelive.models import InputTextContentPart, ServerEventType, UserMessageItem

@@ -89,18 +89,7 @@ export function AzureVoice() {
     socket.current = ws
     ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token, language }))
 
-    // Voice Live takes 24 kHz and listens all the time: it hears the patient over the agent
-    microphone.current = new Microphone((pcm) => ws.readyState === WebSocket.OPEN && ws.send(pcm), () => {}, 24000)
-    try {
-      await microphone.current.start()
-      microphone.current.sending = true
-    } catch {
-      ws.close()
-      setNotice('Microphone access is needed. Allow it in the browser and try again.')
-      setPhase('error')
-      return
-    }
-
+    // attached before the microphone prompt, so a message the server sends early is not lost
     ws.onmessage = (message) => {
       if (message.data instanceof ArrayBuffer) {
         player.current?.play(message.data)
@@ -128,6 +117,19 @@ export function AzureVoice() {
       }
       void release()
     }
+
+    // Voice Live takes 24 kHz and listens all the time: it hears the patient over the agent
+    microphone.current = new Microphone((pcm) => ws.readyState === WebSocket.OPEN && ws.send(pcm), () => {}, 24000)
+    try {
+      await microphone.current.start()
+      microphone.current.sending = true
+    } catch {
+      ws.close()
+      setNotice('Microphone access is needed. Allow it in the browser and try again.')
+      setPhase('error')
+      return
+    }
+
   }, [language, release])
 
   const stop = useCallback(() => {
