@@ -302,29 +302,35 @@ async def voice_agent_socket(websocket: WebSocket):
         patient, language = await _authenticate(websocket)
     except HTTPException as e:
         detail = e.detail["message"] if isinstance(e.detail, dict) else e.detail
+        print(f"Voice agent: sign-in refused ({e.status_code})")
         return await refuse(detail, 4403 if e.status_code == 403 else 4401)
-    except Exception:
+    except Exception as e:
+        print(f"Voice agent: sign-in step failed: {e!r}")
         return await refuse("Please sign in to start the interview.", 4401)
     if not configured():
+        print("Voice agent: PROJECT_ENDPOINT, AGENT_NAME or the Redis settings are missing")
         return await refuse("The Azure voice agent is not set up on this server.", 4500)
 
     session_id = str(uuid.uuid4())
-    
+
     try:
         await redis().set_owner(session_id, patient["user_id"], patient['org_id'])
-    
-    except Exception:
+    except Exception as e:
+        print(f"Voice agent: could not save the owner in Redis: {e!r}")
         return await refuse("The interview could not be started. Please try again.", 4500)
+    print(f"Voice agent interview {session_id[:8]} started (language {language})")
     
     interview = Interview(session_id, patient, language)
     db.audit_later(patient["user_id"], "start_voice_agent_interview", case_id=session_id, org_id=patient["org_id"])
 
     try:
         async with open_connection() as connection:
-            tasks = {asyncio.create_task(_from_browser(websocket, connection, interview)),
-                     asyncio.create_task(_to_browser(websocket, connection, interview)),
-                     asyncio.create_task(_watch_stored(websocket, interview))}
+            print(f"Voice agent interview {session_id[:8]}: connected to Foundry")
+            tasks = {asyncio.create_task(_from_browser(websocket, connection, interview), name="browser"),
+                     asyncio.create_task(_to_browser(websocket, connection, interview), name="foundry"),
+                     asyncio.create_task(_watch_stored(websocket, interview), name="stored")}
             done, pending = await asyncio.wait(tasks, timeout=MAX_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+            print(f"Voice agent interview {session_id[:8]}: ended by {[t.get_name() for t in done] or 'the time limit'}")
             for task in pending:
                 task.cancel()
             for task in pending:
