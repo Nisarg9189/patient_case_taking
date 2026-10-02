@@ -63,17 +63,6 @@ LANGUAGES = {"en": "English", "hi": "Hindi", "gu": "Gujarati", "mr": "Marathi"}
 GREETING = ("Hello, I'm the clinic's voice assistant. I'll ask you a few questions about your health, so the "
             "doctor is ready before your visit. It takes a few minutes. What brings you in today?")
 
-def session_tools(host):
-    """The MCP server the agent should use in this session, sent in session.update (when
-    VOICE_SESSION_MCP=1), instead of relying on the tool saved on the Foundry agent. The address is
-    MCP_PUBLIC_URL, or this app's own address (the Host header of the browser's connection)."""
-    if os.getenv("VOICE_SESSION_MCP") != "1" or not os.getenv("MCP_SECRET"):
-        return None
-    url = os.getenv("MCP_PUBLIC_URL") or f"https://{host}/mcp-server/mcp"
-    return [{"type": "mcp", "server_label": "patient_case_taking", "server_url": url,
-             "headers": {"Authorization": f"Bearer {os.environ['MCP_SECRET']}"}, "require_approval": "never"}]
-
-
 _credential = None
 _redis = None
 
@@ -132,10 +121,9 @@ class Interview:
     """One interview: whose it is, what was said, and what to do when it ends without the agent
     having stored it."""
 
-    def __init__(self, session_id, patient, language=None, tools=None):
+    def __init__(self, session_id, patient, language=None):
         self.session_id = session_id
         self.patient = patient
-        self.tools = tools         # MCP tools for session.update, or None
         self.language = language   # name of the language the patient picked, or None
         self.last_audio = 0.0     # when the agent's voice last arrived (loop time)
         self.done_sent = False
@@ -250,10 +238,6 @@ async def _to_browser(websocket, connection, interview):
         if ready:
             return
         ready = True
-        if interview.tools:
-            await connection.send({"type": "session.update",
-                                   "session": {"type": "realtime", "tools": interview.tools, "tool_choice": "auto"}})
-            print(f"Voice agent interview {interview.session_id[:8]}: sent the MCP tool in session.update")
         # the agent passes this id to every tool call (its instructions say so)
         text = f"The case_id for this interview is {interview.session_id}."
         if interview.language and interview.language != "English":   # English: the message is just the case id, as before
@@ -371,8 +355,7 @@ async def voice_agent_socket(websocket: WebSocket):
         return await refuse("The interview could not be started. Please try again.", 4500)
     print(f"Voice agent interview {session_id[:8]} started (language {language})")
     
-    host = websocket.headers.get("x-forwarded-host") or websocket.headers.get("host") or ""
-    interview = Interview(session_id, patient, language, session_tools(host))
+    interview = Interview(session_id, patient, language)
     db.audit_later(patient["user_id"], "start_voice_agent_interview", case_id=session_id, org_id=patient["org_id"])
 
     try:
