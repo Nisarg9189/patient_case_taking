@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CaseDetails, ChecklistCard, SECTIONS, sectionTexts } from './App'
+import { CaseDocuments } from './Documents'
 import { PageHeader } from './PageHeader'
 import { api, type Me } from './auth'
 import { PrescriptionsCard } from './Prescriptions'
@@ -139,6 +140,7 @@ export function CasePage({
       <main className="layout">
         <section className="conversation">
           <ClinicianSummary text={selected.summary} sections={selected.summary_sections} />
+          <CaseDocuments caseId={selected.case_id} />
           <PrescriptionsCard caseId={selected.case_id} record={selected.original_case} meId={meId} />
           {selected.review_sections && (
             <PatientReview record={selected.original_case} review={selected.review_sections} reviewedAt={selected.reviewed_at} />

@@ -4,6 +4,7 @@ import { MyDetails, MyPrescriptions } from './Prescriptions'
 import { PageHeader } from './PageHeader'
 import type { CaseRecord, Checklist, Symptom, TopicStatus } from './types'
 import { AzureVoice } from './AzureVoice'
+import { MyDocuments } from './Documents'
 
 const TOPICS: [string, string][] = [
   ['chief_complaint', 'Main complaint'],
@@ -40,6 +41,7 @@ export function InterviewView() {
         <section className="conversation">
           <AzureVoice />
           <MyAppointments />
+          <MyDocuments />
           <MyPrescriptions />
           <MyDetails />
         </section>

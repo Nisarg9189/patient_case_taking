@@ -19,6 +19,8 @@ to them by id.
   patient_profiles     a patient's date of birth, sex, weight, phone, address, ABHA   } see
   doctor_profiles      a doctor's registration number, council and qualification  } see
   prescriptions        what a doctor prescribed for a case (draft, signed, void)    } backend/prescriptions.py
+  patient_documents    photos/PDFs of a patient's past lab reports and prescriptions, with the
+                       OCR markdown and the summary for the doctor (backend/documents.py)
   audit_log      who viewed or changed what, and when
 """
 import asyncio
@@ -211,6 +213,27 @@ SCHEMA = [
     """,
     "CREATE INDEX IF NOT EXISTS prescriptions_by_case ON prescriptions (case_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS prescriptions_by_patient ON prescriptions (patient_user_id, signed_at DESC) WHERE status <> 'draft'",
+    # a patient's past lab reports and prescriptions (photo or PDF); `markdown` is what OCR read,
+    # `summary` the short version for the doctor. Deleted with the patient.
+    """
+    CREATE TABLE IF NOT EXISTS patient_documents (
+        document_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_user_id uuid NOT NULL REFERENCES neon_auth."user" (id) ON DELETE CASCADE,
+        kind            text NOT NULL DEFAULT 'other' CHECK (kind IN ('lab_report', 'prescription', 'other')),
+        title           text NOT NULL DEFAULT '',
+        content_type    text NOT NULL,
+        size_bytes      integer NOT NULL,
+        file            bytea NOT NULL,
+        status          text NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'ready', 'failed')),
+        error           text,
+        markdown        text,
+        summary         jsonb,
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        started_at      timestamptz NOT NULL DEFAULT now(),
+        processed_at    timestamptz
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS patient_documents_by_patient ON patient_documents (patient_user_id, created_at DESC)",
     """
     CREATE TABLE IF NOT EXISTS audit_log (
         id      bigserial PRIMARY KEY,

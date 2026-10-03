@@ -27,6 +27,7 @@ from fastapi import FastAPI  # noqa: E402
 import db  # noqa: E402
 from api import router as api_router  # noqa: E402
 from booking_api import router as booking_router  # noqa: E402
+from documents import router as documents_router  # noqa: E402
 from prescriptions import router as prescriptions_router  # noqa: E402
 import voice_agent  # noqa: E402
 
@@ -71,6 +72,7 @@ async def lifespan(app):
 app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(booking_router)
+app.include_router(documents_router)
 app.include_router(prescriptions_router)
 app.include_router(voice_agent.router)
 if mcp_app:

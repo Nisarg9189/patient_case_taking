@@ -2531,3 +2531,129 @@ a.save-button {
     animation: none;
   }
 }
+
+/* the patient's past reports and prescriptions (Documents.tsx) */
+.doc-form {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--brand-tint);
+}
+
+.doc-file {
+  display: block;
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.doc-file input {
+  display: block;
+  margin-top: 4px;
+  max-width: 100%;
+}
+
+.doc-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.doc-item:first-child {
+  border-top: none;
+}
+
+.doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.doc-title {
+  font-weight: 600;
+}
+
+.doc-headline {
+  margin: 8px 0 4px;
+  font-weight: 500;
+}
+
+.doc-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.doc-points {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.doc-points li {
+  margin: 2px 0;
+}
+
+.doc-point-flag {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.doc-preview {
+  margin-top: 10px;
+}
+
+.doc-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 560px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.doc-preview-pdf {
+  width: 100%;
+  height: 560px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.doc-text-details {
+  margin-top: 10px;
+}
+
+.doc-text-details summary {
+  cursor: pointer;
+}
+
+.doc-text {
+  max-height: 260px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--brand-tint);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
