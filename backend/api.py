@@ -28,6 +28,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -143,6 +144,7 @@ class ClinicDetails(BaseModel):
     district: str = Field("", max_length=80)
     consultation_fee: Optional[int] = Field(None, ge=0, le=100000)  # rupees; none = not shown
     description: str = Field("", max_length=600)
+    agent_phone: str = Field("", max_length=20)  # the number patients call to reach the AI interview line
 
 
 def _district(text: str):
@@ -156,7 +158,8 @@ async def get_clinic_details(org_id: str, user: User = Depends(current_user)):
     _require_manager(user, org_id)
     database = await db.pool()
     row = await database.fetchrow(
-        "SELECT name, address, phone, email, registration_number, state, district, consultation_fee, description "
+        "SELECT name, address, phone, email, registration_number, state, district, consultation_fee, description, agent_phone, "
+        "(SELECT count(*) FROM memberships m WHERE m.org_id = organizations.org_id AND m.role = 'doctor') AS doctor_count "
         "FROM organizations WHERE org_id = $1::uuid", org_id)
     if row is None:
         raise HTTPException(404, "No such clinic")
@@ -170,20 +173,30 @@ async def save_clinic_details(org_id: str, details: ClinicDetails, user: User = 
     if values["state"] and values["state"] not in STATES:
         raise HTTPException(400, "Choose the state from the list")
     values["district"] = _district(values["district"])
+    values["agent_phone"] = "".join(ch for ch in values["agent_phone"] if ch.isdigit())   # digits only: how a call is matched
+    if values["agent_phone"] and len(values["agent_phone"]) < 10:
+        raise HTTPException(400, "The phone line must have at least 10 digits")
     database = await db.pool()
-    saved = await database.fetchval(
-        """
-        UPDATE organizations SET address = $2, phone = $3, email = $4, registration_number = $5,
-                                 state = $6, district = $7, consultation_fee = $8, description = $9
-        WHERE org_id = $1::uuid RETURNING true
-        """,
-        org_id, values["address"], values["phone"], values["email"], values["registration_number"],
-        values["state"], values["district"], values["consultation_fee"], values["description"],
-    )
+    try:
+        saved = await _save_details(database, org_id, values)
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(409, "Another hospital already uses that phone line")
     if not saved:
         raise HTTPException(404, "No such clinic")
     db.audit_later(user.id, "save_clinic_details", org_id=org_id, detail=values)
     return values
+
+
+async def _save_details(database, org_id, values):
+    return await database.fetchval(
+        """
+        UPDATE organizations SET address = $2, phone = $3, email = $4, registration_number = $5,
+                                 state = $6, district = $7, consultation_fee = $8, description = $9, agent_phone = $10
+        WHERE org_id = $1::uuid RETURNING true
+        """,
+        org_id, values["address"], values["phone"], values["email"], values["registration_number"],
+        values["state"], values["district"], values["consultation_fee"], values["description"], values["agent_phone"],
+    )
 
 
 @router.get("/orgs/{org_id}/members")

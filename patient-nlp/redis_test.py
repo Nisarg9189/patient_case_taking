@@ -100,10 +100,12 @@ class redis_db:
         return current
     
     async def set_owner(self, case_id: str, user_id: str, org_id: str, doctor_id: str | None = None,
-                        document_ids: list[str] | None = None) -> None:
+                        document_ids: list[str] | None = None, caller_phone: str | None = None,
+                        extra: dict | None = None) -> None:
         await self.r.set(
             f"case:{case_id}:owner",
-            json.dumps({"user_id": user_id, "org_id": org_id, "doctor_id": doctor_id, "document_ids": document_ids}),
+            json.dumps({"user_id": user_id, "org_id": org_id, "doctor_id": doctor_id, "document_ids": document_ids,
+                        "caller_phone": caller_phone, **(extra or {})}),
             ex=3600
         )
     

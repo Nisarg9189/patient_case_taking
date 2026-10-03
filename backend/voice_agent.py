@@ -82,21 +82,21 @@ def configured():
     return all(os.getenv(name) for name in ("PROJECT_ENDPOINT", "AGENT_NAME", "REDIS_HOST", "REDIS_PASSWORD"))
 
 
-def realtime_url():
-    """The WebSocket address of the existing agent's realtime route."""
+def realtime_url(agent_name=None):
+    """The WebSocket address of the existing agent's realtime route (AGENT_NAME unless another is given)."""
     from urllib.parse import quote, urlparse, urlunparse
     parsed = urlparse(os.environ["PROJECT_ENDPOINT"])
-    path = parsed.path.rstrip("/") + f"/agents/{quote(os.environ['AGENT_NAME'], safe='')}/endpoint/protocols/voice"
+    path = parsed.path.rstrip("/") + f"/agents/{quote(agent_name or os.environ['AGENT_NAME'], safe='')}/endpoint/protocols/voice"
     return urlunparse(("wss" if parsed.scheme == "https" else "ws", parsed.netloc, path, "",
                        f"api-version={API_VERSION}", ""))
 
 
-def open_connection():
+def open_connection(agent_name=None):
     from azure.ai.voicelive.aio import connect
     manager = connect(credential=_get_credential(), endpoint=os.environ["PROJECT_ENDPOINT"],
                       api_version=API_VERSION, headers=FOUNDRY_FEATURES)
     # the SDK builds the model/agent address itself; an agent's route is a different path
-    manager._prepare_url = realtime_url
+    manager._prepare_url = lambda: realtime_url(agent_name)
     return manager
 
 
@@ -171,7 +171,8 @@ class Interview:
         await case_store.save_original(sid, case, checklist, self.turns, True, reason,
                                        self.patient["user_id"], self.patient["org_id"],
                                        doctor_id=self.patient.get("doctor_id"),
-                                       shared_documents=self.patient.get("document_ids"))
+                                       shared_documents=self.patient.get("document_ids"),
+                                       caller_phone=self.patient.get("caller_phone"))
         self.case_id = sid
 
         if collected:
@@ -271,7 +272,7 @@ async def _to_browser(websocket, connection, interview):
             return
         ready = True
         # the agent passes this id to every tool call (its instructions say so)
-        text = f"The case_id for this interview is {interview.session_id}."
+        text = f"The case_id for this interview is {interview.session_id}." + getattr(interview, "intro", "")
         if interview.language and interview.language != "English":   # English: the message is just the case id, as before
             text += f" Speak with the patient in {interview.language} for the whole interview, from your first words."
             if speaks_first:   # the Foundry greeting is off: open with ours, in the patient's language
@@ -335,11 +336,12 @@ async def _to_browser(websocket, connection, interview):
             return
 
 
-async def _watch_stored(websocket, interview):
-    """Wait until finish_interview (run by the agent through the MCP server) has stored the case,
-    let the agent's goodbye be spoken, then tell the browser it is done."""
+async def _watch_stored(websocket, interview, is_done=None):
+    """Wait until finish_interview (run by the agent through the MCP server) has stored the case
+    (is_done: or another check, which a phone call uses to wait for end_call), let the agent's
+    goodbye be spoken, then tell the browser it is done."""
     loop = asyncio.get_running_loop()
-    while not await redis().is_stored(interview.session_id):
+    while not await (is_done or redis().is_stored)(interview.session_id):
         await asyncio.sleep(FINISH_POLL_SECONDS)
     stored_at = loop.time()
     while True:       # wait for the goodbye to start, then until the agent has been quiet for a moment

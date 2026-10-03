@@ -3307,3 +3307,21 @@ a.save-button {
   cursor: pointer;
 }
 
+
+.listing-status {
+  margin: 8px 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.listing-ok {
+  background: var(--listen-soft);
+  color: var(--listen);
+}
+
+.listing-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}

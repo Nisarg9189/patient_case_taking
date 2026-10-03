@@ -207,6 +207,8 @@ interface ClinicDetails {
   district: string
   consultation_fee: number | null
   description: string
+  agent_phone: string // the number patients call to reach the AI interview line
+  doctor_count?: number // read-only: patients only find a hospital that has a doctor
 }
 
 // the clinic's contact details, printed at the top of its prescriptions
@@ -249,6 +251,15 @@ function ClinicDetailsCard({ orgId }: { orgId: string }) {
       </div>
       <h4 className="details-subhead">How patients find you</h4>
       <p className="muted small">Patients choose a state and district, then a hospital. You are listed once both are set and you have a doctor.</p>
+      {(() => {
+        const missing = [!details.state && 'a state', !details.district.trim() && 'a district', details.doctor_count === 0 && 'a doctor (add one under Clinic members)']
+          .filter(Boolean)
+        return missing.length === 0 ? (
+          <p className="listing-status listing-ok" role="status">✓ Patients can find this hospital by {details.district}, {details.state}. Save after any change.</p>
+        ) : (
+          <p className="listing-status listing-warn" role="status">Not shown to patients yet. Still needed: {missing.join(', ')}.</p>
+        )
+      })()}
       <div className="rx-grid rx-grid-3">
         <label>State
           <select value={details.state} onChange={(e) => set('state', e.target.value)}>
@@ -263,6 +274,14 @@ function ClinicDetailsCard({ orgId }: { orgId: string }) {
         </label>
         <label className="span-3">About the hospital<textarea rows={3} maxLength={600} value={details.description}
                placeholder="Specialities, facilities, timings: a few lines patients will read" onChange={(e) => set('description', e.target.value)} /></label>
+      </div>
+      <h4 className="details-subhead">AI phone line</h4>
+      <p className="muted small">The number your telephony provider (for example Exotel) forwards to the voice assistant. Patients who call it are interviewed in their own language, and the interview appears under Cases with their phone number.</p>
+      <div className="rx-grid rx-grid-3">
+        <label>Phone line number
+          <input type="tel" inputMode="tel" value={details.agent_phone} placeholder="e.g. +91 79 1234 5678"
+                 onChange={(e) => set('agent_phone', e.target.value)} />
+        </label>
       </div>
       {message && <p className={message.error ? 'review-note review-error' : 'review-note'}>{message.text}</p>}
       <div className="buttons">

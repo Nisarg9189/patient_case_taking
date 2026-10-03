@@ -16,6 +16,7 @@ interface CaseRow {
   has_summary: boolean
   patient_name: string | null
   patient_email: string | null
+  caller_phone: string | null // a patient who phoned the hospital's AI line, with no account
 }
 
 export interface CaseFull extends CaseRow {
@@ -80,7 +81,7 @@ export function CasesView({ me }: { me: Me }) {
                 <tr key={c.case_id} onClick={() => void open(c.case_id)} tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && void open(c.case_id)}>
                   <td>{when(c.finished_at)}</td>
-                  <td>{c.patient_name || c.patient_email || '—'}</td>
+                  <td>{c.patient_name || c.patient_email || (c.caller_phone ? `Phone ${c.caller_phone}` : '—')}</td>
                   <td>{c.complaint || '—'}</td>
                   <td>
                     {c.doctor_id === me.id && <span className="tag tag-reviewed">for you</span>}
@@ -117,7 +118,7 @@ export function CasePage({
   backLabel: string
   meId: string
 }) {
-  const name = selected.patient_name || selected.patient_email || 'Patient'
+  const name = selected.patient_name || selected.patient_email || (selected.caller_phone ? `Caller ${selected.caller_phone}` : 'Patient')
   return (
     <div className="page">
       <PageHeader tabs={[['case', 'Patient case']]} active="case"
@@ -129,6 +130,7 @@ export function CasePage({
           <h1>{name}</h1>
           <p className="muted">
             {selected.patient_name && selected.patient_email && <>{selected.patient_email} · </>}
+            {!selected.patient_name && !selected.patient_email && selected.caller_phone && <>Phoned the hospital's AI line · </>}
             Interview finished {when(selected.finished_at)}
           </p>
         </div>
