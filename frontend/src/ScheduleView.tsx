@@ -203,26 +203,32 @@ interface ClinicDetails {
   phone: string
   email: string
   registration_number: string
+  state: string
+  district: string
+  consultation_fee: number | null
+  description: string
 }
 
 // the clinic's contact details, printed at the top of its prescriptions
 function ClinicDetailsCard({ orgId }: { orgId: string }) {
   const [details, setDetails] = useState<ClinicDetails | null>(null)
+  const [states, setStates] = useState<string[]>([])
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
 
   useEffect(() => {
     api<ClinicDetails>(`/api/orgs/${orgId}/details`).then(setDetails).catch((e) => setMessage({ text: e.message, error: true }))
+    api<string[]>('/api/states').then(setStates).catch(() => undefined)
   }, [orgId])
 
   if (!details) return null
-  const set = (key: keyof ClinicDetails, value: string) => setDetails({ ...details, [key]: value })
+  const set = <K extends keyof ClinicDetails>(key: K, value: ClinicDetails[K]) => setDetails({ ...details, [key]: value })
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
     setMessage(null)
     try {
       setDetails(await api<ClinicDetails>(`/api/orgs/${orgId}/details`, { method: 'PUT', body: JSON.stringify(details) }))
-      setMessage({ text: 'Clinic details saved. They appear on prescriptions signed from now on.', error: false })
+      setMessage({ text: 'Clinic details saved. Patients see the hospital page, and prescriptions signed from now on carry the contact details.', error: false })
     } catch (e) {
       setMessage({ text: e instanceof Error ? e.message : 'Could not save.', error: true })
     }
@@ -230,7 +236,7 @@ function ClinicDetailsCard({ orgId }: { orgId: string }) {
 
   return (
     <form className="card" onSubmit={save}>
-      <h3>Clinic details <span className="muted small">printed on every prescription from this clinic</span></h3>
+      <h3>Clinic details <span className="muted small">shown to patients, and printed on every prescription</span></h3>
       <div className="rx-grid rx-grid-3">
         <label className="span-2">Address<textarea rows={2} value={details.address} placeholder="Building, street, area, city, PIN"
                                              onChange={(e) => set('address', e.target.value)} /></label>
@@ -240,6 +246,23 @@ function ClinicDetailsCard({ orgId }: { orgId: string }) {
         </div>
         <label>Clinic registration no.<input value={details.registration_number} placeholder="Clinical Establishments registration"
                                             onChange={(e) => set('registration_number', e.target.value)} /></label>
+      </div>
+      <h4 className="details-subhead">How patients find you</h4>
+      <p className="muted small">Patients choose a state and district, then a hospital. You are listed once both are set and you have a doctor.</p>
+      <div className="rx-grid rx-grid-3">
+        <label>State
+          <select value={details.state} onChange={(e) => set('state', e.target.value)}>
+            <option value="">Not listed</option>
+            {states.map((st) => <option key={st} value={st}>{st}</option>)}
+          </select>
+        </label>
+        <label>District<input value={details.district} placeholder="e.g. Ahmedabad" onChange={(e) => set('district', e.target.value)} /></label>
+        <label>Consultation fee (₹)
+          <input type="number" min={0} max={100000} inputMode="numeric" value={details.consultation_fee ?? ''} placeholder="Leave empty to hide"
+                 onChange={(e) => set('consultation_fee', e.target.value === '' ? null : Number(e.target.value))} />
+        </label>
+        <label className="span-3">About the hospital<textarea rows={3} maxLength={600} value={details.description}
+               placeholder="Specialities, facilities, timings: a few lines patients will read" onChange={(e) => set('description', e.target.value)} /></label>
       </div>
       {message && <p className={message.error ? 'review-note review-error' : 'review-note'}>{message.text}</p>}
       <div className="buttons">

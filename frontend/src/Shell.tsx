@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
-import { InterviewView } from './App'
 import { AuthScreen } from './AuthScreen'
+import { Landing } from './Landing'
 import {
   api, ApiError, authClient, describeInvitation, forgetInvite, takeInviteFromUrl, type Invitation, type Me,
 } from './auth'
 import { AppointmentsView } from './AppointmentsView'
 import { CasesView } from './CasesView'
+import { PatientHome } from './Home'
 import { MembersView } from './MembersView'
 import { ScheduleView } from './ScheduleView'
-import { CalendarIcon, ClipboardIcon, ClockIcon, LogoIcon, LogoutIcon, MicIcon, UsersIcon } from './icons'
+import { CalendarIcon, ClipboardIcon, ClockIcon, HomeIcon, LogoIcon, LogoutIcon, UsersIcon } from './icons'
 
-type View = 'interview' | 'cases' | 'appointments' | 'schedule' | 'members'
+type View = 'home' | 'cases' | 'appointments' | 'schedule' | 'members'
 
 const VIEW_LABEL: Record<View, string> = {
-  interview: 'My interview',
+  home: 'Home',
   cases: 'Clinic cases',
   appointments: 'Appointments',
   schedule: 'Clinic schedule',
@@ -21,7 +22,7 @@ const VIEW_LABEL: Record<View, string> = {
 }
 
 const VIEW_ICON: Record<View, () => React.ReactNode> = {
-  interview: () => <MicIcon />,
+  home: () => <HomeIcon />,
   cases: () => <ClipboardIcon />,
   appointments: () => <CalendarIcon />,
   schedule: () => <ClockIcon />,
@@ -41,7 +42,7 @@ function viewsFor(me: Me): View[] {
   if (roles.has('doctor') || roles.has('nurse')) views.push('cases')
   if (admin || roles.has('doctor') || roles.has('nurse') || roles.has('front_desk')) views.push('appointments')
   if (admin) views.push('schedule', 'members')
-  if (roles.has('patient')) views.push('interview')
+  if (roles.has('patient')) views.push('home')
   return views
 }
 
@@ -56,6 +57,7 @@ export default function Shell() {
   const [inviteToken] = useState(() => takeInviteFromUrl())
   const [invitation, setInvitation] = useState<Invitation | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [intent, setIntent] = useState<'sign-in' | 'sign-up' | null>(null) // null: still on the landing page
 
   // an invitation link was opened: show what it is for on the sign-in screen
   useEffect(() => {
@@ -117,6 +119,7 @@ export default function Shell() {
   const signOut = async () => {
     await authClient.signOut()
     setMenuOpen(false)
+    setIntent(null)
     setMe(null)
     setView(null)
     setStatus('signed-out')
@@ -127,10 +130,16 @@ export default function Shell() {
     return <AuthScreen verifyEmail={verifyEmail} onSignedIn={() => void load()} />
   }
   if (status === 'signed-out' || !me) {
+    // visitors see the landing page first; an invitation link or an error goes straight to sign-in
+    if (intent === null && !inviteToken && !invitation && !error) {
+      return <Landing onStart={() => setIntent('sign-up')} onSignIn={() => setIntent('sign-in')} />
+    }
     return (
       <>
         {error && <div className="notice">{error}</div>}
-        <AuthScreen invitation={invitation} onSignedIn={() => void load()} />
+        <AuthScreen key={intent ?? 'invite'} invitation={invitation} startMode={intent ?? undefined}
+                    onBack={inviteToken ? undefined : () => { setError(null); setIntent(null) }}
+                    onSignedIn={() => void load()} />
       </>
     )
   }
@@ -184,7 +193,7 @@ export default function Shell() {
               <div className="notice notice-ok">{notice}</div>
             </div>
           )}
-          {view === 'interview' && <InterviewView />}
+          {view === 'home' && <PatientHome me={me} onSignOut={() => void signOut()} />}
           {view === 'cases' && <CasesView me={me} />}
           {view === 'appointments' && <AppointmentsView me={me} />}
           {view === 'schedule' && <ScheduleView />}

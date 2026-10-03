@@ -19,6 +19,7 @@ to them by id.
   patient_profiles     a patient's date of birth, sex, weight, phone, address, ABHA   } see
   doctor_profiles      a doctor's registration number, council and qualification  } see
   prescriptions        what a doctor prescribed for a case (draft, signed, void)    } backend/prescriptions.py
+  hospital_ratings     a patient's 1-5 rating of a hospital they booked a visit at (backend/hospitals.py)
   patient_documents    photos/PDFs of a patient's past lab reports and prescriptions, with the
                        OCR markdown and the summary for the doctor (backend/documents.py)
   audit_log      who viewed or changed what, and when
@@ -166,6 +167,30 @@ SCHEMA = [
     "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS phone text NOT NULL DEFAULT ''",
     "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS email text NOT NULL DEFAULT ''",
     "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS registration_number text NOT NULL DEFAULT ''",
+    # how patients find a hospital: by state and district; the fee and a short description are shown
+    # on its page (a hospital is listed once its state and district are set and it has a doctor)
+    "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS state text NOT NULL DEFAULT ''",
+    "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS district text NOT NULL DEFAULT ''",
+    "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS consultation_fee integer",
+    "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS organizations_by_place ON organizations (state, lower(district))",
+    """
+    CREATE TABLE IF NOT EXISTS hospital_ratings (
+        org_id          uuid NOT NULL REFERENCES organizations ON DELETE CASCADE,
+        patient_user_id uuid NOT NULL REFERENCES neon_auth."user" (id) ON DELETE CASCADE,
+        rating          smallint NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment         text NOT NULL DEFAULT '',
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        updated_at      timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (org_id, patient_user_id)
+    )
+    """,
+    # the doctor the patient chose before the interview: the interview goes to this hospital
+    # (cases.org_id) and this doctor
+    "ALTER TABLE cases ADD COLUMN IF NOT EXISTS doctor_id uuid",
+    # the documents (patient_documents or prescriptions ids) the patient chose to share for this
+    # consultation; null = no choice was recorded (older cases): the doctor sees the whole history
+    "ALTER TABLE cases ADD COLUMN IF NOT EXISTS shared_documents uuid[]",
     # a patient's details for prescriptions: filled in by the patient, or saved from the
     # prescriptions doctors sign (so the next one starts with them)
     """
@@ -234,6 +259,8 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS patient_documents_by_patient ON patient_documents (patient_user_id, created_at DESC)",
+    # the date on the report or prescription (typed by the patient, or read from the document)
+    "ALTER TABLE patient_documents ADD COLUMN IF NOT EXISTS document_date date",
     """
     CREATE TABLE IF NOT EXISTS audit_log (
         id      bigserial PRIMARY KEY,

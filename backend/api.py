@@ -26,7 +26,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 import case_store
 import db
 from auth import User, current_user, forget
+from india import STATES
 
 router = APIRouter(prefix="/api")
 
@@ -137,6 +138,17 @@ class ClinicDetails(BaseModel):
     phone: str = Field("", max_length=40)
     email: str = Field("", max_length=120)
     registration_number: str = Field("", max_length=60)  # e.g. under the Clinical Establishments Act
+    # how patients find the hospital (a state and district are needed to be listed), and what it shows
+    state: str = Field("", max_length=60)
+    district: str = Field("", max_length=80)
+    consultation_fee: Optional[int] = Field(None, ge=0, le=100000)  # rupees; none = not shown
+    description: str = Field("", max_length=600)
+
+
+def _district(text: str):
+    """A district as typed, tidied: spaces collapsed, and capitalised when typed all in one case."""
+    text = " ".join(text.split())
+    return text.title() if text.islower() or text.isupper() else text
 
 
 @router.get("/orgs/{org_id}/details")
@@ -144,7 +156,8 @@ async def get_clinic_details(org_id: str, user: User = Depends(current_user)):
     _require_manager(user, org_id)
     database = await db.pool()
     row = await database.fetchrow(
-        "SELECT name, address, phone, email, registration_number FROM organizations WHERE org_id = $1::uuid", org_id)
+        "SELECT name, address, phone, email, registration_number, state, district, consultation_fee, description "
+        "FROM organizations WHERE org_id = $1::uuid", org_id)
     if row is None:
         raise HTTPException(404, "No such clinic")
     return dict(row)
@@ -153,14 +166,19 @@ async def get_clinic_details(org_id: str, user: User = Depends(current_user)):
 @router.put("/orgs/{org_id}/details")
 async def save_clinic_details(org_id: str, details: ClinicDetails, user: User = Depends(current_user)):
     _require_manager(user, org_id)
-    values = {k: v.strip() for k, v in details.model_dump().items()}
+    values = {k: v.strip() if isinstance(v, str) else v for k, v in details.model_dump().items()}
+    if values["state"] and values["state"] not in STATES:
+        raise HTTPException(400, "Choose the state from the list")
+    values["district"] = _district(values["district"])
     database = await db.pool()
     saved = await database.fetchval(
         """
-        UPDATE organizations SET address = $2, phone = $3, email = $4, registration_number = $5
+        UPDATE organizations SET address = $2, phone = $3, email = $4, registration_number = $5,
+                                 state = $6, district = $7, consultation_fee = $8, description = $9
         WHERE org_id = $1::uuid RETURNING true
         """,
         org_id, values["address"], values["phone"], values["email"], values["registration_number"],
+        values["state"], values["district"], values["consultation_fee"], values["description"],
     )
     if not saved:
         raise HTTPException(404, "No such clinic")

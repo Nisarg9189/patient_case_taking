@@ -11,6 +11,7 @@ interface CaseRow {
   finished_at: string | null
   aborted: boolean | null
   complaint: string | null
+  doctor_id: string | null // the doctor the patient chose for this interview
   reviewed: boolean
   has_summary: boolean
   patient_name: string | null
@@ -82,6 +83,7 @@ export function CasesView({ me }: { me: Me }) {
                   <td>{c.patient_name || c.patient_email || '—'}</td>
                   <td>{c.complaint || '—'}</td>
                   <td>
+                    {c.doctor_id === me.id && <span className="tag tag-reviewed">for you</span>}
                     {c.has_summary && <span className="tag">summary</span>}
                     {c.reviewed && <span className="tag tag-reviewed">reviewed</span>}
                     {c.aborted && <span className="tag">stopped early</span>}

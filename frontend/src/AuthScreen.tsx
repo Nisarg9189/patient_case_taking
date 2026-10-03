@@ -1,5 +1,11 @@
 import { useState } from 'react'
+import './Auth.css'
+import { AuthArt } from './AuthArt'
 import { authClient, refreshSession, type Invitation } from './auth'
+import { BRAND } from './brand'
+import {
+  EyeIcon, EyeOffIcon, FileTextIcon, HospitalIcon, LockIcon, LogoIcon, MailIcon, MicIcon, ShieldIcon, UserIcon,
+} from './icons'
 
 const ROLE_NAME: Record<string, string> = {
   patient: 'patient',
@@ -18,17 +24,22 @@ export function AuthScreen({
   onSignedIn,
   invitation,
   verifyEmail,
+  startMode,
+  onBack,
 }: {
   onSignedIn: () => void
   invitation?: Invitation | null
   verifyEmail?: string
+  startMode?: 'sign-in' | 'sign-up'
+  onBack?: () => void // back to the landing page
 }) {
-  const [mode, setMode] = useState<Mode>(verifyEmail ? 'verify' : invitation ? 'sign-up' : 'sign-in')
+  const [mode, setMode] = useState<Mode>(verifyEmail ? 'verify' : invitation ? 'sign-up' : startMode ?? 'sign-in')
   const [name, setName] = useState('')
   const [email, setEmail] = useState(verifyEmail ?? invitation?.email ?? '')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(
     verifyEmail ? `Verify ${verifyEmail} to continue: send a code, then enter it here.` : null,
@@ -89,81 +100,138 @@ export function AuthScreen({
     setInfo(null)
   }
 
+  const heading = mode === 'sign-in' ? 'Welcome back' : mode === 'sign-up' ? 'Create your account' : 'Verify your email'
+  const sub = mode === 'sign-in' ? 'Sign in to continue your care.' : mode === 'sign-up'
+    ? 'It takes a minute. No forms to fill in later: you will just talk.' : 'Enter the 6-digit code we emailed you.'
+
   return (
-    <div className="auth-page">
-      <div className="card auth-card">
-        <h1>Patient intake</h1>
-        <p className="subtitle">
-          {mode === 'sign-in' ? 'Sign in to continue' : mode === 'sign-up' ? 'Create your account' : 'Verify your email'}
-        </p>
-
-        {invitation && mode !== 'verify' && (
-          <div className="notice notice-ok">
-            You are invited as <strong>{ROLE_NAME[invitation.role] ?? invitation.role}</strong> at{' '}
-            <strong>{invitation.org_name}</strong>. Create an account or sign in with {invitation.email}.
+    <div className="au-shell">
+      <aside className="au-side">
+        <AuthArt className="au-art" />
+        <div className="au-side-inner">
+          <span className="au-logo"><LogoIcon size={30} /> {BRAND}</span>
+          <div className="au-pitch">
+            <h2>{mode === 'sign-up' ? 'Your story, understood before you walk in.' : 'Good to see you again.'}</h2>
+            <p>Talk to our AI assistant in your own language, share your reports with the doctors you choose, and book your visit.</p>
+            <ul className="au-points">
+              <li><span><MicIcon size={20} /></span> Speak in English, Hindi, Gujarati or Marathi</li>
+              <li><span><FileTextIcon size={20} /></span> Your reports and prescriptions, by date</li>
+              <li><span><HospitalIcon size={20} /></span> Find a hospital and doctor, then book</li>
+            </ul>
           </div>
-        )}
-        {info && <div className="notice notice-ok">{info}</div>}
+          <p className="au-trust"><ShieldIcon size={16} /> Your information is shared only with the doctors you choose.</p>
+        </div>
+      </aside>
 
-        <form className="auth-form" onSubmit={submit}>
-          {mode === 'sign-up' && (
-            <label>
-              Full name
-              <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
-            </label>
+      <main className="au-main">
+        <div className="au-panel">
+          {onBack && (
+            <button className="au-back" type="button" onClick={onBack}>
+              ← Back to home
+            </button>
           )}
+
           {mode !== 'verify' && (
-            <>
-              <label>
-                Email
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
-                />
-              </label>
-            </>
+            <div className="au-tabs" role="tablist" aria-label="Sign in or create an account">
+              <button role="tab" type="button" aria-selected={mode === 'sign-in'} onClick={() => mode !== 'sign-in' && switchMode()}>Sign in</button>
+              <button role="tab" type="button" aria-selected={mode === 'sign-up'} onClick={() => mode !== 'sign-up' && switchMode()}>Create account</button>
+            </div>
           )}
-          {mode === 'verify' && (
-            <label>
-              6-digit code
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="\d{6}"
-                required
-              />
-            </label>
+
+          <h1>{heading}</h1>
+          <p className="au-sub">{sub}</p>
+
+          {invitation && mode !== 'verify' && (
+            <div className="notice notice-ok">
+              You are invited as <strong>{ROLE_NAME[invitation.role] ?? invitation.role}</strong> at{' '}
+              <strong>{invitation.org_name}</strong>. Create an account or sign in with {invitation.email}.
+            </div>
           )}
-          {error && (
-            <p className="review-note review-error" role="alert">
-              {error}
+          {info && <div className="notice notice-ok">{info}</div>}
+
+          <form className="au-form" onSubmit={submit}>
+            {mode === 'sign-up' && (
+              <label>
+                Full name
+                <span className="au-field">
+                  <UserIcon size={18} />
+                  <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" placeholder="Your name" />
+                </span>
+              </label>
+            )}
+            {mode !== 'verify' && (
+              <>
+                <label>
+                  Email
+                  <span className="au-field">
+                    <MailIcon size={18} />
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email"
+                           placeholder="you@example.com" />
+                  </span>
+                </label>
+                <label>
+                  Password
+                  <span className="au-field">
+                    <LockIcon size={18} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                      placeholder={mode === 'sign-up' ? 'At least 8 characters' : 'Your password'}
+                    />
+                    <button type="button" className="au-eye" onClick={() => setShowPassword((v) => !v)}
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                      {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                    </button>
+                  </span>
+                </label>
+              </>
+            )}
+            {mode === 'verify' && (
+              <label>
+                6-digit code
+                <span className="au-field">
+                  <ShieldIcon size={18} />
+                  <input
+                    className="au-code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="\d{6}"
+                    placeholder="123456"
+                    required
+                  />
+                </span>
+              </label>
+            )}
+            {error && (
+              <p className="review-note review-error" role="alert">
+                {error}
+              </p>
+            )}
+            <button className="au-submit" type="submit" disabled={busy}>
+              {busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : mode === 'sign-up' ? 'Create account' : 'Verify email'}
+            </button>
+          </form>
+
+          {mode === 'verify' ? (
+            <button className="au-link" type="button" onClick={() => void sendCode()}>
+              Send a new code
+            </button>
+          ) : (
+            <p className="au-switch">
+              {mode === 'sign-in' ? 'New here?' : 'Already have an account?'}{' '}
+              <button className="au-link" type="button" onClick={switchMode}>
+                {mode === 'sign-in' ? 'Create an account' : 'Sign in'}
+              </button>
             </p>
           )}
-          <button className="primary" type="submit" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : mode === 'sign-up' ? 'Create account' : 'Verify'}
-          </button>
-        </form>
-
-        {mode === 'verify' ? (
-          <button className="link-button" type="button" onClick={() => void sendCode()}>
-            Send a new code
-          </button>
-        ) : (
-          <button className="link-button" type="button" onClick={switchMode}>
-            {mode === 'sign-in' ? 'New here? Create an account' : 'Already have an account? Sign in'}
-          </button>
-        )}
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

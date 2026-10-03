@@ -23,7 +23,7 @@ MAX_SECTION_CHARS = 2000
 
 # the columns a case list shows
 _LIST_COLUMNS = """
-    c.case_id, c.finished_at, c.aborted, c.org_id,
+    c.case_id, c.finished_at, c.aborted, c.org_id, c.doctor_id,
     c.original_case -> 'chief_complaint' ->> 'text' AS complaint,
     c.reviewed_at IS NOT NULL AS reviewed,
     c.summary IS NOT NULL AS has_summary,
@@ -39,7 +39,7 @@ def _case_uuid(case_id):
 
 
 async def save_original(case_id, case, checklist, turns, aborted, reason, patient_user_id=None, org_id=None,
-                        review=None):
+                        review=None, doctor_id=None, shared_documents=None):
     """Store the case record of a finished (or stopped) interview, with the patient's saved
     review sections if there are any (one statement: one round trip)."""
     sections = None
@@ -52,15 +52,18 @@ async def save_original(case_id, case, checklist, turns, aborted, reason, patien
     await database.execute(
         """
         INSERT INTO cases (case_id, finished_at, aborted, reason, original_case, checklist, conversation,
-                           patient_user_id, org_id, review_sections, reviewed_at)
-        VALUES ($1, now(), $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $9::jsonb IS NULL THEN NULL ELSE now() END)
+                           patient_user_id, org_id, review_sections, reviewed_at, doctor_id, shared_documents)
+        VALUES ($1, now(), $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $9::jsonb IS NULL THEN NULL ELSE now() END, $10, $11)
         ON CONFLICT (case_id) DO UPDATE SET
             finished_at = now(), aborted = $2, reason = $3, original_case = $4, checklist = $5,
-            conversation = $6, patient_user_id = $7, org_id = $8,
+            conversation = $6, patient_user_id = $7, org_id = $8, doctor_id = coalesce($10, cases.doctor_id),
+            shared_documents = coalesce($11, cases.shared_documents),
             review_sections = coalesce($9, cases.review_sections),
             reviewed_at = CASE WHEN $9::jsonb IS NULL THEN cases.reviewed_at ELSE now() END
         """,
         uuid.UUID(case_id), aborted, reason, case, checklist, turns, patient_user_id, org_id, sections,
+        uuid.UUID(str(doctor_id)) if doctor_id else None,
+        [uuid.UUID(str(i)) for i in shared_documents] if shared_documents is not None else None,
     )
 
 

@@ -1,10 +1,5 @@
 import './App.css'
-import { MyAppointments } from './BookVisit'
-import { MyDetails, MyPrescriptions } from './Prescriptions'
-import { PageHeader } from './PageHeader'
 import type { CaseRecord, Checklist, Symptom, TopicStatus } from './types'
-import { AzureVoice } from './AzureVoice'
-import { MyDocuments } from './Documents'
 
 const TOPICS: [string, string][] = [
   ['chief_complaint', 'Main complaint'],
@@ -28,26 +23,6 @@ const STATUS_LABEL: Record<TopicStatus, string> = {
   pending: 'To ask',
   unknown_or_declined: 'Unknown',
   not_relevant: 'Not relevant',
-}
-
-// the patient's page: the spoken interview with the voice agent, and their visits and prescriptions
-export function InterviewView() {
-  return (
-    <div className="page">
-      <PageHeader tabs={[['interview', 'Patient intake']]} active="interview" />
-      <p className="page-intro">A short spoken interview before your appointment</p>
-
-      <main className="layout">
-        <section className="conversation">
-          <AzureVoice />
-          <MyAppointments />
-          <MyDocuments />
-          <MyPrescriptions />
-          <MyDetails />
-        </section>
-      </main>
-    </div>
-  )
 }
 
 function symptomDetails(symptom: Symptom) {

@@ -131,7 +131,8 @@ async def finish_interview(case_id: str) -> dict:
     
 
     try:
-        await save_original(case_id, case, checklist, [], False, None, owner["user_id"], owner["org_id"])
+        await save_original(case_id, case, checklist, [], False, None, owner["user_id"], owner["org_id"],
+                            doctor_id=owner.get("doctor_id"), shared_documents=owner.get("document_ids"))
         
         await producer.send_and_wait("case-summary", json.dumps(
             {"session_id": case_id, "patient_id": case_id, "case": case, "review": None}

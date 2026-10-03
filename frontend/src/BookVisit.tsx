@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from './auth'
+import { SharedReports } from './Documents'
 import {
   dayKey, formatDay, formatTime, formatVisit, isUpcoming, patientCanChange, type Appointment, type Clinic, type Slots,
 } from './booking'
 
 // After the interview: the patient picks a hospital, (optionally) a doctor, a day and a time.
 // Booking again for the same interview replaces the earlier booking.
-export function BookVisit({ caseId }: { caseId: string | null }) {
+// fixed: the hospital and doctor the patient already chose (then only the day and time are left).
+export function BookVisit({ caseId, fixed }: {
+  caseId: string | null
+  fixed?: { orgId: string; hospital: string; doctorId: string; doctor: string }
+}) {
   const [clinics, setClinics] = useState<Clinic[] | null>(null)
   const [mine, setMine] = useState<Appointment[] | null>(null)
   const [changing, setChanging] = useState(false)
-  const [orgId, setOrgId] = useState('')
+  const [orgId, setOrgId] = useState(fixed?.orgId ?? '')
   const [slots, setSlots] = useState<Slots | null>(null)
-  const [doctorId, setDoctorId] = useState('') // '' = any available doctor
+  const [doctorId, setDoctorId] = useState(fixed?.doctorId ?? '') // '' = any available doctor
   const [chosen, setChosen] = useState<string | null>(null) // the chosen slot's starts_at
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -121,6 +126,7 @@ export function BookVisit({ caseId }: { caseId: string | null }) {
           </p>
         )}
         <p className="muted small">Your answers from this interview are shared with this hospital's doctors.</p>
+        {current.case_id && <SharedReports caseId={current.case_id} />}
         {canChange ? (
           <div className="buttons">
             <button className="edit-button" onClick={() => setChanging(true)} disabled={busy}>
@@ -145,36 +151,53 @@ export function BookVisit({ caseId }: { caseId: string | null }) {
         <p className="muted">No hospital takes online bookings yet. The clinic will contact you about your visit.</p>
       ) : (
         <>
-          <label className="edit-row">
-            <span className="row-label">Hospital</span>
-            <select value={orgId} onChange={(e) => setOrgId(e.target.value)}>
-              <option value="">Choose a hospital…</option>
-              {clinics.map((c) => (
-                <option key={c.org_id} value={c.org_id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {fixed ? (
+            <div className="edit-row">
+              <span className="row-label">Hospital</span>
+              <strong>{fixed.hospital}</strong>
+            </div>
+          ) : (
+            <label className="edit-row">
+              <span className="row-label">Hospital</span>
+              <select value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+                <option value="">Choose a hospital…</option>
+                {clinics.map((c) => (
+                  <option key={c.org_id} value={c.org_id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {orgId && slots === null && <p className="muted">Loading free times…</p>}
           {slots && slots.slots.length === 0 && (
-            <p className="muted">No free times in the next {clinics.find((c) => c.org_id === orgId)?.days_ahead} days. Please choose another hospital.</p>
+            <p className="muted">
+              No free times in the next {clinics.find((c) => c.org_id === orgId)?.days_ahead ?? 14} days.
+              {fixed ? ' The clinic will contact you about your visit, or you can start again with another hospital.' : ' Please choose another hospital.'}
+            </p>
           )}
 
           {slots && slots.slots.length > 0 && (
             <>
-              <label className="edit-row">
-                <span className="row-label">Doctor</span>
-                <select value={doctorId} onChange={(e) => { setDoctorId(e.target.value); setChosen(null) }}>
-                  <option value="">Any available doctor</option>
-                  {doctors.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {fixed?.doctorId ? (
+                <div className="edit-row">
+                  <span className="row-label">Doctor</span>
+                  <strong>{fixed.doctor}</strong>
+                </div>
+              ) : (
+                <label className="edit-row">
+                  <span className="row-label">Doctor</span>
+                  <select value={doctorId} onChange={(e) => { setDoctorId(e.target.value); setChosen(null) }}>
+                    <option value="">Any available doctor</option>
+                    {doctors.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <SlotPicker slots={slots} doctorId={doctorId} chosen={chosen} onChoose={setChosen} />
               <p className="muted small">Times are the hospital's local time ({timeZone}).</p>
@@ -242,6 +265,7 @@ export function MyAppointments() {
             ) : (
               <span className="muted small">In progress</span>
             )}
+            {a.case_id && <SharedReports caseId={a.case_id} />}
           </li>
         ))}
       </ul>

@@ -14,8 +14,11 @@ summary, and sets the Redis key case:<id>:stored, which is how this server learn
 interview is over. If the patient stops early, what was collected is stored here as an aborted case.
 
 Browser -> server
-  {"type": "auth", "token", "language"}  first message: the patient's Neon Auth JWT and the
-                              language they picked ("en", "hi", "gu", "mr"; see LANGUAGES)
+  {"type": "auth", "token", "language", "org_id", "doctor_id", "document_ids"}  first message:
+                              the patient's Neon Auth JWT, the language they picked ("en", "hi", "gu",
+                              "mr"; see LANGUAGES), the hospital and doctor they chose (the interview
+                              goes to them; without them, to the patient's own clinic) and the past
+                              documents they chose to share with them (without: the whole history)
   binary                      microphone audio, PCM16 mono 24 kHz, sent all the time (the
                               service detects speech itself and lets the patient interrupt)
   {"type": "stop"}            end now (what was collected is kept)
@@ -44,6 +47,7 @@ from fastapi import APIRouter, HTTPException, WebSocket
 import auth
 import case_store
 import db
+import documents
 from patient_extraction import empty_case
 from redis_test import redis_db
 
@@ -165,7 +169,9 @@ class Interview:
         if not collected:
             case["interview_transcript"] = self.turns
         await case_store.save_original(sid, case, checklist, self.turns, True, reason,
-                                       self.patient["user_id"], self.patient["org_id"])
+                                       self.patient["user_id"], self.patient["org_id"],
+                                       doctor_id=self.patient.get("doctor_id"),
+                                       shared_documents=self.patient.get("document_ids"))
         self.case_id = sid
 
         if collected:
@@ -195,7 +201,33 @@ async def _authenticate(websocket):
     clinics = sorted(user.orgs_with("patient"))
     if not clinics:
         raise HTTPException(403, "Only patients can take the intake interview.")
-    return {"user_id": user.id, "org_id": clinics[0]}, LANGUAGES.get(message.get("language"))
+    patient = {"user_id": user.id, "org_id": clinics[0], "doctor_id": None, "document_ids": None}
+    if message.get("org_id"):    # the patient chose a hospital (and a doctor) before the interview
+        patient.update(await _chosen(message["org_id"], message.get("doctor_id")))
+    if isinstance(message.get("document_ids"), list):   # and which past documents to share with them
+        patient["document_ids"] = [str(i) for i in await documents.owned_ids(user.id, message["document_ids"])]
+    return patient, LANGUAGES.get(message.get("language"))
+
+
+async def _chosen(org_id, doctor_id):
+    """The hospital and doctor the patient chose, checked: the interview goes to them."""
+    try:
+        org, doctor = uuid.UUID(str(org_id)), (uuid.UUID(str(doctor_id)) if doctor_id else None)
+    except ValueError:
+        raise HTTPException(400, "Please choose the hospital and doctor again.")
+    database = await db.pool()
+    row = await database.fetchrow(
+        """
+        SELECT EXISTS (SELECT 1 FROM memberships WHERE org_id = $1 AND user_id = $2 AND role = 'doctor') AS doctor_ok
+        FROM organizations WHERE org_id = $1
+        """,
+        org, doctor,
+    )
+    if row is None:
+        raise HTTPException(400, "Please choose the hospital again.")
+    if doctor and not row["doctor_ok"]:
+        raise HTTPException(400, "Please choose the doctor again.")
+    return {"org_id": str(org), "doctor_id": str(doctor) if doctor else None}
 
 
 async def _from_browser(websocket, connection, interview):
@@ -349,7 +381,8 @@ async def voice_agent_socket(websocket: WebSocket):
     session_id = str(uuid.uuid4())
 
     try:
-        await redis().set_owner(session_id, patient["user_id"], patient['org_id'])
+        await redis().set_owner(session_id, patient["user_id"], patient["org_id"], patient.get("doctor_id"),
+                                patient.get("document_ids"))
     except Exception as e:
         print(f"Voice agent: could not save the owner in Redis: {e!r}")
         return await refuse("The interview could not be started. Please try again.", 4500)

@@ -68,6 +68,7 @@ async def read_markdown(data: bytes, content_type: str) -> str:
 class DocumentSummary(BaseModel):
     document_type: Literal["lab_report", "prescription", "discharge_summary", "imaging_report", "other"]
     date: Optional[str] = Field(None, description="the date printed on the document, as written; null if none")
+    date_iso: Optional[str] = Field(None, description="that date as YYYY-MM-DD; null when there is none or it is unclear")
     issued_by: Optional[str] = Field(None, description="the lab, hospital or doctor named on it; null if none")
     headline: str = Field(description="one plain sentence: what the document is, who issued it, its date")
     key_points: list[str] = Field(default_factory=list, description="short lines, at most 15; empty if unreadable")

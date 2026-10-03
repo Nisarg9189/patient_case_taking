@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Microphone, QuestionPlayer } from './audio'
 import { getToken } from './auth'
 import { BookVisit } from './BookVisit'
+import type { Target } from './hospitals'
 import { VoiceStatus, type VoiceState } from './VoiceStatus'
 
 interface Line {
@@ -21,7 +22,9 @@ const LANGUAGES = [
 
 // The patient's interview, by the Azure Foundry voice agent (the server proxies Voice Live): the
 // patient can talk over the agent, and the agent saves their answers through its tools.
-export function AzureVoice() {
+// target: the hospital and doctor the patient chose, if they did: the interview goes to them and
+// the booking is with them. onDone: the interview is over (the booking is next).
+export function AzureVoice({ target, onDone }: { target?: Target; onDone?: () => void } = {}) {
   const [enabled, setEnabled] = useState<boolean | null>(null) // null until the server has answered
   const [phase, setPhase] = useState<Phase>('idle')
   const [lines, setLines] = useState<Line[]>([])
@@ -87,7 +90,7 @@ export function AzureVoice() {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/voice-agent`)
     ws.binaryType = 'arraybuffer'
     socket.current = ws
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token, language }))
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token, language, org_id: target?.orgId, doctor_id: target?.doctorId, document_ids: target?.documentIds }))
 
     // attached before the microphone prompt, so a message the server sends early is not lost
     ws.onmessage = (message) => {
@@ -108,6 +111,7 @@ export function AzureVoice() {
         finished.current = true
         setCaseId(event.case_id)
         setPhase('done')
+        onDone?.()
       }
     }
     ws.onclose = () => {
@@ -130,7 +134,7 @@ export function AzureVoice() {
       return
     }
 
-  }, [language, release])
+  }, [language, release, target, onDone])
 
   const stop = useCallback(() => {
     socket.current?.send(JSON.stringify({ type: 'stop' }))
@@ -174,7 +178,10 @@ export function AzureVoice() {
         <>
           <h3>Thank you</h3>
           <p>The doctor will see what you told the assistant. Now choose the hospital and time for your visit.</p>
-          {caseId && <BookVisit caseId={caseId} />}
+          {caseId && (
+            <BookVisit caseId={caseId}
+                       fixed={target && { orgId: target.orgId, hospital: target.hospital, doctorId: target.doctorId, doctor: target.doctor }} />
+          )}
           <button className="secondary" onClick={start}>
             Start a new interview
           </button>
