@@ -336,13 +336,13 @@ async def _to_browser(websocket, connection, interview):
             return
 
 
-async def _watch_stored(websocket, interview, is_done=None):
+async def _watch_stored(websocket, interview, is_done=None, poll=FINISH_POLL_SECONDS):
     """Wait until finish_interview (run by the agent through the MCP server) has stored the case
     (is_done: or another check, which a phone call uses to wait for end_call), let the agent's
     goodbye be spoken, then tell the browser it is done."""
     loop = asyncio.get_running_loop()
     while not await (is_done or redis().is_stored)(interview.session_id):
-        await asyncio.sleep(FINISH_POLL_SECONDS)
+        await asyncio.sleep(poll)
     stored_at = loop.time()
     while True:       # wait for the goodbye to start, then until the agent has been quiet for a moment
         await asyncio.sleep(0.5)

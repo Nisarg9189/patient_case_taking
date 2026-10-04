@@ -344,7 +344,7 @@ async def phone_socket(websocket: WebSocket):
             print(f"Phone interview {session_id[:8]}: connected to Foundry")
             tasks = {asyncio.create_task(line.feed(connection), name="caller"),
                      asyncio.create_task(voice_agent._to_browser(line, connection, interview), name="foundry"),
-                     asyncio.create_task(voice_agent._watch_stored(line, interview, ended), name="stored")}
+                     asyncio.create_task(voice_agent._watch_stored(line, interview, ended, 0.25), name="stored")}
             done, pending = await asyncio.wait(tasks, timeout=MAX_SECONDS, return_when=asyncio.FIRST_COMPLETED)
             print(f"Phone interview {session_id[:8]}: ended by {[t.get_name() for t in done] or 'the time limit'}")
             if any(t.get_name() == "stored" for t in done):

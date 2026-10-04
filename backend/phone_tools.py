@@ -291,8 +291,10 @@ async def get_open_slots(case_id: str, date: str | None = None) -> dict:
 
 async def book_appointment(case_id: str, starts_at: str) -> dict:
     """Book the slot the caller chose (starts_at exactly as get_open_slots gave it). Call it the moment
-    the caller says yes to a time, and only after finish_interview. On success, tell the caller the hospital, doctor, day and time, then
-    ask if anything else is needed, and call end_call."""
+    the caller says yes to a time, and only after finish_interview. When it succeeds the call is
+    closed by itself as soon as you have finished speaking: tell the caller the hospital, doctor,
+    day and time in one or two short sentences, add a short goodbye, and ask nothing more (no
+    "anything else?"). Do not call end_call."""
     owner = await _owner(case_id)
     if not owner:
         return _no_call()
@@ -320,13 +322,18 @@ async def book_appointment(case_id: str, starts_at: str) -> dict:
         appointment["org_id"], appointment["doctor_id"])
     db.audit_later(owner["user_id"], "book_appointment", case_id=case_id, org_id=owner["org_id"],
                    detail={"by": "phone", "starts_at": when.isoformat()})
+    # the journey is over: the call closes once the agent has said the confirmation and goodbye
+    await voice_agent.redis().r.set(f"case:{case_id}:ended", "1", ex=3600)
     return {"ok": True, "hospital": info["name"], "address": info["address"] or None, "doctor": info["doctor"],
-            "when": _spoken(appointment["starts_at"], info["tz"])}
+            "when": _spoken(appointment["starts_at"], info["tz"]),
+            "now": "Say the hospital, doctor, day and time in one or two short sentences, then a short goodbye. "
+                   "Do not ask anything else. The call closes by itself after you finish."}
 
 
 async def end_call(case_id: str, no_booking: bool = False) -> dict:
-    """Call when the journey is over, then say a short goodbye: the call is closed after you finish
-    speaking. If the interview was saved but no appointment is booked, this refuses (so a booking
+    """Call it to close a call that ends without a booking, then say a short goodbye: the call is closed
+    after you finish speaking. (After a booking you do not need it: book_appointment closes the call.)
+    If the interview was saved but no appointment is booked, this refuses (so a booking
     the caller agreed to is not forgotten): book it first. Pass no_booking=true only when the caller
     does not want an appointment, no time was free, or it was an emergency stop."""
     if not await _owner(case_id):
