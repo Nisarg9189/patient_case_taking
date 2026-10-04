@@ -3,11 +3,11 @@ choose a hospital and doctor, the intake interview (the tools in patient-nlp/mcp
 time slot and the booking. They are registered on the same MCP server (register(mcp), called by app.py)
 and only work for a phone call: the call's owner record in Redis (written by phone_agent.py) says so.
 
-The order the agent follows (agents/phone_agent_instructions.md): the caller first says what the problem is
-(saved with record_answer), then which hospital they want; with no preference the agent offers at most three.
-  record_answer (the problem) -> [find_hospitals -> list_doctors] -> choose_doctor -> save_patient_name
-  -> the rest of the interview (record_answer ...) -> finish_interview -> get_open_slots -> book_appointment
-  -> end_call
+The order the agent follows (agents/phone_agent_instructions.md): the caller tells the problem and answers the
+health questions (record_answer each time), hears the summary and confirms it, and only then chooses a hospital
+(by name, or at most three that fit the problem) and a doctor (or lets the agent pick the best match).
+  record_answer ... -> [find_hospitals -> list_doctors] -> choose_doctor -> save_patient_name
+  -> finish_interview -> get_open_slots -> book_appointment -> end_call
 
 The interview is stored (finish_interview) with the hospital and doctor chosen by then, so it goes to them.
 """
@@ -68,24 +68,36 @@ def _spoken(when, tz):
     return f"{local:%A} {local.day} {local:%B}, {local.hour % 12 or 12}:{local:%M} {'AM' if local.hour < 12 else 'PM'}"
 
 
-async def find_hospitals(case_id: str, name: str | None = None, state: str | None = None,
-                         district: str | None = None) -> dict:
+def _keywords(text, limit=5):
+    """Comma- or space-separated words as typed, tidied: at most `limit` of at least 3 letters."""
+    words = []
+    for part in str(text or "").replace(",", " ").replace("%", " ").replace("_", " ").split():
+        if len(part) >= 3 and part.lower() not in words:
+            words.append(part.lower())
+    return words[:limit]
+
+
+async def find_hospitals(case_id: str, name: str | None = None, specialty: str | None = None,
+                         state: str | None = None, district: str | None = None) -> dict:
     """Find hospitals the caller can choose from, best rated first, at most three, with the fee.
 
-    Use it on the platform line (the call's opening message says no hospital is chosen). If the
-    caller named a hospital, pass name (any part of it). If they have no preference, call it with
-    no arguments: you get the three best rated. Pass district (and state) in English only to narrow
-    down, for example when the caller says where they live or when more_available is true and the
-    three are not near them. Read the names (with the fee) to the caller and let them choose;
-    then call list_doctors for the one they pick."""
+    Use it on the platform line (the call's opening message says no hospital is chosen), after the
+    caller has confirmed their summary. If the caller named a hospital, pass name (the words of
+    it). If they do not know which hospital, pass specialty: two to four English words for the kind
+    of doctor their problem needs, with synonyms, for example "dermatology skin" or "orthopaedic
+    bone joint", chosen from their chief complaint (this only routes them, never a diagnosis); you
+    get up to three hospitals that have such a doctor. With neither you get the three best rated.
+    Pass district (and state) in English only to narrow down, for example when the caller says where
+    they live or when more_available is true and the three are not near them. Read the names (with
+    the fee) to the caller and let them choose; then call list_doctors for the one they pick."""
     owner = await _owner(case_id)
     if not owner:
         return _no_call()
     if owner.get("line_org"):
         return {"ok": False, "error": "This line belongs to one hospital; it is already chosen. Use list_doctors."}
     where, args = [hospitals._LISTED], []
-    if name and name.strip():
-        args.append("%" + " ".join(name.replace("%", " ").replace("_", " ").split()) + "%")
+    for word in _keywords(name, 6):    # every word of the name must be in the hospital's name
+        args.append(f"%{word}%")
         where.append(f"o.name ILIKE ${len(args)}")
     if state and state.strip():
         canonical = _state(state)
@@ -96,30 +108,55 @@ async def find_hospitals(case_id: str, name: str | None = None, state: str | Non
     if district and district.strip():
         args.append(" ".join(district.split()))
         where.append(f"lower(o.district) = lower(${len(args)})")
-    database = await db.pool()
-    rows = await database.fetch(
-        f"""
-        SELECT o.org_id, o.name, o.address, o.district, o.consultation_fee, r.avg, r.n,
-               (SELECT count(*) FROM memberships m WHERE m.org_id = o.org_id AND m.role = 'doctor') AS doctors
-        FROM organizations o {hospitals._RATINGS}
-        WHERE {" AND ".join(where)}
-        ORDER BY r.avg DESC NULLS LAST, r.n DESC NULLS LAST, o.name LIMIT {MAX_HOSPITALS + 1}
-        """,
-        *args,
-    )
+    wanted = _keywords(specialty)
+
+    async def search(extra):
+        database = await db.pool()
+        rows = await database.fetch(
+            f"""
+            SELECT o.org_id, o.name, o.address, o.district, o.consultation_fee, r.avg, r.n,
+                   (SELECT count(*) FROM memberships m WHERE m.org_id = o.org_id AND m.role = 'doctor') AS doctors
+            FROM organizations o {hospitals._RATINGS}
+            WHERE {" AND ".join(where + extra[0])}
+            ORDER BY r.avg DESC NULLS LAST, r.n DESC NULLS LAST, o.name LIMIT {MAX_HOSPITALS + 1}
+            """,
+            *args, *extra[1],
+        )
+        return rows
+
+    matched = None
+    if wanted:   # a hospital with a doctor of this kind (or that says so in its description)
+        marks = [f"${len(args) + i + 1}" for i in range(len(wanted))]
+        clause = " OR ".join(f"p.specialty ILIKE {m} OR p.qualification ILIKE {m} OR o.description ILIKE {m}" for m in marks)
+        rows = await search(([f"EXISTS (SELECT 1 FROM memberships m JOIN doctor_profiles p ON p.user_id = m.user_id "
+                              f"WHERE m.org_id = o.org_id AND m.role = 'doctor' AND ({clause}))"],
+                             [f"%{w}%" for w in wanted]))
+        matched = bool(rows)
+        if not rows:
+            rows = await search(([], []))
+    else:
+        rows = await search(([], []))
     if not rows:
         return {"ok": True, "hospitals": [],
                 "note": "No hospital matches. Ask if they want the best rated ones instead (call again with no arguments)."}
-    return {"ok": True, "more_available": len(rows) > MAX_HOSPITALS, "hospitals": [
+    result = {"ok": True, "more_available": len(rows) > MAX_HOSPITALS, "hospitals": [
         {"org_id": str(r["org_id"]), "name": r["name"], "district": r["district"] or None,
          "address": r["address"] or None, "consultation_fee_rupees": r["consultation_fee"], "doctors": r["doctors"],
          "rating": round(r["avg"], 1) if r["avg"] is not None else None, "ratings": r["n"] or 0}
         for r in rows[:MAX_HOSPITALS]]}
+    if matched is False:
+        result["note"] = ("No hospital lists that kind of doctor, so these are the best rated. Say so, and let the caller "
+                          "choose, or name a hospital they know.")
+    return result
 
 
-async def list_doctors(case_id: str, org_id: str | None = None) -> dict:
+async def list_doctors(case_id: str, org_id: str | None = None, specialty: str | None = None) -> dict:
     """The doctors of a hospital with their speciality. org_id may be left out when the call is
-    to one hospital's own line. Offer the doctors by name and speciality, then call choose_doctor."""
+    to one hospital's own line. Pass specialty (two to four English words for the kind of doctor
+    the caller's problem needs, with synonyms) to get the matching doctors first and
+    suggested_doctor_id, the best match. Offer the doctors by name and speciality and let the
+    caller choose; if they say any doctor is fine, choose suggested_doctor_id (or, with no match,
+    the general medicine doctor) and tell them who. Then call choose_doctor."""
     owner = await _owner(case_id)
     if not owner:
         return _no_call()
@@ -145,10 +182,18 @@ async def list_doctors(case_id: str, org_id: str | None = None) -> dict:
         """,
         org,
     )
+    wanted = _keywords(specialty)
+
+    def fits(d):
+        text = f"{d['specialty']} {d['qualification']}".lower()
+        return bool(wanted) and any(w in text for w in wanted)
+    ranked = sorted(doctors, key=lambda d: not fits(d))    # matching doctors first (the order is otherwise kept)
+    suggested = next((d for d in ranked if fits(d)), None)
     return {"ok": True, "hospital": hospital["name"], "org_id": str(org),
             "consultation_fee_rupees": hospital["consultation_fee"],
+            "suggested_doctor_id": str(suggested["doctor_id"]) if suggested else None,
             "doctors": [{"doctor_id": str(d["doctor_id"]), "name": d["name"], "specialty": d["specialty"] or None,
-                         "qualification": d["qualification"] or None} for d in doctors]}
+                         "qualification": d["qualification"] or None, "matches_problem": fits(d)} for d in ranked]}
 
 
 async def choose_doctor(case_id: str, org_id: str | None = None, doctor_id: str | None = None) -> dict:
@@ -186,7 +231,7 @@ async def choose_doctor(case_id: str, org_id: str | None = None, doctor_id: str 
     owner.update(org_id=str(org), doctor_id=str(doctor) if doctor else None)
     await _save_owner(case_id, owner)
     return {"ok": True, "hospital": row["name"], "doctor": row["doctor_name"] or "the first available doctor",
-            "now": "Continue the interview: ask only the topics record_answer says are still pending."}
+            "now": "Now ask the caller's name (save_patient_name), then call finish_interview, then offer times (get_open_slots)."}
 
 
 async def save_patient_name(case_id: str, name: str) -> dict:
