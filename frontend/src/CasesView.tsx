@@ -167,10 +167,13 @@ export function CasePage({
           )}
         </section>
         <aside className="summary">
-          <div className="card">
-            <h3>Case as recorded</h3>
-            <CaseDetails record={selected.original_case} />
-          </div>
+          {/* the clinician summary says it all: the raw record only shows until the summary is ready */}
+          {!selected.summary && !selected.summary_sections && (
+            <div className="card">
+              <h3>Case as recorded</h3>
+              <CaseDetails record={selected.original_case} />
+            </div>
+          )}
           {selected.checklist && <ChecklistCard checklist={selected.checklist} />}
         </aside>
       </main>
