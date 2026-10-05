@@ -60,6 +60,8 @@ MAX_SECONDS = 20 * 60          # one interview never runs longer (the service bi
 FINISH_POLL_SECONDS = 1        # how often to look for the stored case in Redis
 GOODBYE_START_SECONDS = 8      # after the case is stored, how long to wait for the goodbye to start
 GOODBYE_QUIET_SECONDS = 2      # the goodbye is over when no agent audio has come for this long
+RECOVER_AFTER_SECONDS = 2.5    # a failed tool call is retried if the agent has not carried on by then
+MAX_RECOVERIES = 4             # per interview
 
 # the languages a patient can pick before the interview (browser code -> name the agent is told)
 LANGUAGES = {"en": "English", "hi": "Hindi", "gu": "Gujarati", "mr": "Marathi"}
@@ -82,11 +84,11 @@ def configured():
     return all(os.getenv(name) for name in ("PROJECT_ENDPOINT", "AGENT_NAME", "REDIS_HOST", "REDIS_PASSWORD"))
 
 
-def realtime_url(agent_name=None):
-    """The WebSocket address of the existing agent's realtime route (AGENT_NAME unless another is given)."""
+def realtime_url():
+    """The WebSocket address of the existing agent's realtime route."""
     from urllib.parse import quote, urlparse, urlunparse
     parsed = urlparse(os.environ["PROJECT_ENDPOINT"])
-    path = parsed.path.rstrip("/") + f"/agents/{quote(agent_name or os.environ['AGENT_NAME'], safe='')}/endpoint/protocols/voice"
+    path = parsed.path.rstrip("/") + f"/agents/{quote(os.environ['AGENT_NAME'], safe='')}/endpoint/protocols/voice"
     return urlunparse(("wss" if parsed.scheme == "https" else "ws", parsed.netloc, path, "",
                        f"api-version={API_VERSION}", ""))
 
@@ -171,8 +173,7 @@ class Interview:
         await case_store.save_original(sid, case, checklist, self.turns, True, reason,
                                        self.patient["user_id"], self.patient["org_id"],
                                        doctor_id=self.patient.get("doctor_id"),
-                                       shared_documents=self.patient.get("document_ids"),
-                                       caller_phone=self.patient.get("caller_phone"))
+                                       shared_documents=self.patient.get("document_ids"))
         self.case_id = sid
 
         if collected:
@@ -256,6 +257,26 @@ async def _to_browser(websocket, connection, interview):
             await websocket.send_text(json.dumps(item))
 
     speaks_first = os.getenv("AGENT_SPEAKS_FIRST", "0") == "1"
+    created = 0           # responses the service has started
+    recoveries = 0
+
+    async def recover(seen):
+        """A tool call can fail when the patient talks over the agent while it is writing the call (the arguments
+        arrive cut off). The agent then sometimes just stops. If it has not carried on, tell it and make it go on."""
+        nonlocal recoveries
+        await asyncio.sleep(RECOVER_AFTER_SECONDS)
+        if created != seen or interview.done_sent or recoveries >= MAX_RECOVERIES:
+            return
+        recoveries += 1
+        print(f"Voice agent interview {interview.session_id[:8]}: a tool call failed and the agent stopped; asking it to go on")
+        try:
+            await connection.conversation.item.create(item=SystemMessageItem(content=[InputTextContentPart(text=(
+                "Your last tool call failed (its arguments were cut off). Call it again, in full, now, "
+                "and then carry on with the conversation: do not stay silent."))]))
+            await connection.response.create()
+        except Exception as e:
+            print(f"Voice agent interview {interview.session_id[:8]}: could not restart the agent: {e!r}")
+
     ready = False
     state = None          # last status sent to the browser
     spoke = False         # the current response has produced audio
@@ -272,7 +293,7 @@ async def _to_browser(websocket, connection, interview):
             return
         ready = True
         # the agent passes this id to every tool call (its instructions say so)
-        text = f"The case_id for this interview is {interview.session_id}." + getattr(interview, "intro", "")
+        text = f"The case_id for this interview is {interview.session_id}."
         if interview.language and interview.language != "English":   # English: the message is just the case id, as before
             text += f" Speak with the patient in {interview.language} for the whole interview, from your first words."
             if speaks_first:   # the Foundry greeting is off: open with ours, in the patient's language
@@ -314,6 +335,7 @@ async def _to_browser(websocket, connection, interview):
         elif kind == ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STOPPED:
             await set_state("thinking")
         elif kind == ServerEventType.RESPONSE_CREATED:
+            created += 1
             spoke = False
             await set_state("thinking")
         elif kind == ServerEventType.CONVERSATION_ITEM_CREATED:
@@ -330,19 +352,20 @@ async def _to_browser(websocket, connection, interview):
         elif kind in (ServerEventType.RESPONSE_MCP_CALL_COMPLETED, ServerEventType.RESPONSE_MCP_CALL_FAILED,
                       "response.foundry_agent_call.completed", "response.foundry_agent_call.failed"):
             await set_state("thinking")
+            if kind in (ServerEventType.RESPONSE_MCP_CALL_FAILED, "response.foundry_agent_call.failed"):
+                asyncio.create_task(recover(created))
         elif kind == ServerEventType.ERROR:
             print(f"\n⚠️ Voice Live error: {event.error.message}")
             await send({"type": "error", "text": "The voice agent had a problem. Please try again."})
             return
 
 
-async def _watch_stored(websocket, interview, is_done=None, poll=FINISH_POLL_SECONDS):
-    """Wait until finish_interview (run by the agent through the MCP server) has stored the case
-    (is_done: or another check, which a phone call uses to wait for end_call), let the agent's
-    goodbye be spoken, then tell the browser it is done."""
+async def _watch_stored(websocket, interview):
+    """Wait until finish_interview (run by the agent through the MCP server) has stored the case,
+    let the agent's goodbye be spoken, then tell the browser it is done."""
     loop = asyncio.get_running_loop()
-    while not await (is_done or redis().is_stored)(interview.session_id):
-        await asyncio.sleep(poll)
+    while not await redis().is_stored(interview.session_id):
+        await asyncio.sleep(FINISH_POLL_SECONDS)
     stored_at = loop.time()
     while True:       # wait for the goodbye to start, then until the agent has been quiet for a moment
         await asyncio.sleep(0.5)

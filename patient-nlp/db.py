@@ -191,11 +191,6 @@ SCHEMA = [
     # the documents (patient_documents or prescriptions ids) the patient chose to share for this
     # consultation; null = no choice was recorded (older cases): the doctor sees the whole history
     "ALTER TABLE cases ADD COLUMN IF NOT EXISTS shared_documents uuid[]",
-    # a patient who phoned the hospital's AI line has no account: the case keeps the number they called
-    # from (cases.patient_user_id stays empty), and the hospital's own line is how a call finds its clinic
-    "ALTER TABLE cases ADD COLUMN IF NOT EXISTS caller_phone text",
-    "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS agent_phone text NOT NULL DEFAULT ''",
-    "CREATE UNIQUE INDEX IF NOT EXISTS organizations_by_agent_phone ON organizations (right(agent_phone, 10)) WHERE agent_phone <> ''",
     # a patient's details for prescriptions: filled in by the patient, or saved from the
     # prescriptions doctors sign (so the next one starts with them)
     """

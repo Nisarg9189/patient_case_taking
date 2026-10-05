@@ -107,9 +107,6 @@ async def finish_interview(case_id: str) -> dict:
     if not owner:
         return {"ok": False, "error": "unknown or expired case_id"}
     
-    if owner.get("channel") == "phone" and not owner.get("org_id"):
-        return {"ok": False, "error": "Choose the hospital first (find_hospitals, choose_doctor), then finish."}
-
     checklist = await r.get_checklist(case_id)
     flags = await r.get_flags(case_id)
     urgent = any(f["reason"] == "red_flag" for f in flags)
@@ -135,8 +132,7 @@ async def finish_interview(case_id: str) -> dict:
 
     try:
         await save_original(case_id, case, checklist, [], False, None, owner["user_id"], owner["org_id"],
-                            doctor_id=owner.get("doctor_id"), shared_documents=owner.get("document_ids"),
-                            caller_phone=owner.get("caller_phone"))
+                            doctor_id=owner.get("doctor_id"), shared_documents=owner.get("document_ids"))
         
         await producer.send_and_wait("case-summary", json.dumps(
             {"session_id": case_id, "patient_id": case_id, "case": case, "review": None}

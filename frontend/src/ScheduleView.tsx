@@ -207,7 +207,6 @@ interface ClinicDetails {
   district: string
   consultation_fee: number | null
   description: string
-  agent_phone: string // the number patients call to reach the AI interview line
   doctor_count?: number // read-only: patients only find a hospital that has a doctor
 }
 
@@ -274,14 +273,6 @@ function ClinicDetailsCard({ orgId }: { orgId: string }) {
         </label>
         <label className="span-3">About the hospital<textarea rows={3} maxLength={600} value={details.description}
                placeholder="Specialities, facilities, timings: a few lines patients will read" onChange={(e) => set('description', e.target.value)} /></label>
-      </div>
-      <h4 className="details-subhead">AI phone line</h4>
-      <p className="muted small">The number your telephony provider (for example Exotel) forwards to the voice assistant. Patients who call it are interviewed in their own language, and the interview appears under Cases with their phone number.</p>
-      <div className="rx-grid rx-grid-3">
-        <label>Phone line number
-          <input type="tel" inputMode="tel" value={details.agent_phone} placeholder="e.g. +91 79 1234 5678"
-                 onChange={(e) => set('agent_phone', e.target.value)} />
-        </label>
       </div>
       {message && <p className={message.error ? 'review-note review-error' : 'review-note'}>{message.text}</p>}
       <div className="buttons">

@@ -30,7 +30,6 @@ from booking_api import router as booking_router  # noqa: E402
 from documents import router as documents_router  # noqa: E402
 from hospitals import router as hospitals_router  # noqa: E402
 from prescriptions import router as prescriptions_router  # noqa: E402
-import phone_agent  # noqa: E402
 import voice_agent  # noqa: E402
 
 # The MCP server the Foundry voice agent calls (patient-nlp/mcp_server.py) runs inside this app,
@@ -39,9 +38,6 @@ mcp_app = None
 if os.getenv("MCP_SECRET"):
     from mcp_server import mcp  # noqa: E402
 
-    import phone_tools  # noqa: E402
-
-    phone_tools.register(mcp)  # the tools of the phone agent's whole-journey calls (hospital, doctor, booking)
     mcp_app = mcp.http_app(path="/mcp")
 
 
@@ -81,14 +77,13 @@ app.include_router(documents_router)
 app.include_router(hospitals_router)
 app.include_router(prescriptions_router)
 app.include_router(voice_agent.router)
-app.include_router(phone_agent.router)
 if mcp_app:
     app.mount("/mcp-server", mcp_app)  # the MCP endpoint is /mcp-server/mcp
 
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "azure_voice_agent": voice_agent.configured(), "phone_agent": phone_agent.configured()}
+    return {"ok": True, "azure_voice_agent": voice_agent.configured()}
 
 
 def serve_frontend():
