@@ -112,9 +112,9 @@ export function AuthScreen({
           <span className="au-logo"><LogoIcon size={30} /> {BRAND}</span>
           <div className="au-pitch">
             <h2>{mode === 'sign-up' ? 'Your story, understood before you walk in.' : 'Good to see you again.'}</h2>
-            <p>Talk to our AI assistant in your own language, share your reports with the doctors you choose, and book your visit.</p>
+            <p>Talk to our AI assistant, share your reports with the doctors you choose, and book your visit.</p>
             <ul className="au-points">
-              <li><span><MicIcon size={20} /></span> Speak in English, Hindi, Gujarati or Marathi</li>
+              <li><span><MicIcon size={20} /></span> Just speak, with no forms to fill in</li>
               <li><span><FileTextIcon size={20} /></span> Your reports and prescriptions, by date</li>
               <li><span><HospitalIcon size={20} /></span> Find a hospital and doctor, then book</li>
             </ul>

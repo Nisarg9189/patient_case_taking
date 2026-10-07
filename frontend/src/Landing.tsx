@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import './Landing.css'
 import { BRAND } from './brand'
 import {
-  ArrowRightIcon, CalendarIcon, ClipboardIcon, FileTextIcon, GlobeIcon, HospitalIcon, LogoIcon, MicIcon, PillIcon,
+  ArrowRightIcon, CalendarIcon, ClipboardIcon, FileTextIcon, HospitalIcon, LogoIcon, MicIcon, PillIcon,
   SearchIcon, ShareIcon, ShieldIcon, UsersIcon,
 } from './icons'
 import { VoiceStatus } from './VoiceStatus'
@@ -10,14 +10,8 @@ import { VoiceStatus } from './VoiceStatus'
 // The public page a visitor sees before signing in: what the product does, in the app's own
 // purple. "Get started" and "Sign in" lead to the sign-in screen (Shell.tsx).
 
-// The sample interview in each language: the assistant speaks the patient's language, as in the product.
-const SAMPLES = {
-  en: { label: 'English', lang: 'en', ai: 'Hello, what brings you in today?', me: 'I have had a fever for two days.', ai2: 'I see. How bad is it, from 0 to 10?' },
-  hi: { label: 'हिन्दी', lang: 'hi', ai: 'नमस्ते, आज आपको क्या तकलीफ़ है?', me: 'मुझे दो दिन से बुखार है।', ai2: 'समझ गया। 0 से 10 में तकलीफ़ कितनी है?' },
-  gu: { label: 'ગુજરાતી', lang: 'gu', ai: 'નમસ્તે, આજે તમને શું તકલીફ છે?', me: 'મને બે દિવસથી તાવ આવે છે.', ai2: 'સમજ્યું. ૦ થી ૧૦ માં તકલીફ કેટલી છે?' },
-  mr: { label: 'मराठी', lang: 'mr', ai: 'नमस्कार, आज तुम्हाला काय त्रास होतोय?', me: 'मला दोन दिवसांपासून ताप आहे.', ai2: 'समजलं. ० ते १० मध्ये त्रास किती आहे?' },
-} as const
-type SampleLanguage = keyof typeof SAMPLES
+// The sample interview shown in the page's mock phone: what the assistant and the patient say.
+const SAMPLE = { ai: 'Hello, what brings you in today?', me: 'I have had a fever for two days.', ai2: 'I see. How bad is it, from 0 to 10?' }
 
 const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
@@ -42,8 +36,6 @@ function Head({ eyebrow, title, children }: { eyebrow: string; title: string; ch
 }
 
 export function Landing({ onStart, onSignIn }: { onStart: () => void; onSignIn: () => void }) {
-  const [language, setLanguage] = useState<SampleLanguage>('gu')
-  const sample = SAMPLES[language]
   return (
     <div className="landing">
       <nav className="l-nav" aria-label="Main">
@@ -71,7 +63,7 @@ export function Landing({ onStart, onSignIn }: { onStart: () => void; onSignIn: 
             Your story, <span className="l-mark">understood</span> before you walk in.
           </h1>
           <p className="l-lead">
-            Patients talk to an AI assistant in their own language. The hospital gets a clear summary, their past reports and a
+            Patients talk to an AI assistant. The hospital gets a clear summary, their past reports and a
             booked visit, within minutes.
           </p>
           <div className="l-cta">
@@ -80,24 +72,15 @@ export function Landing({ onStart, onSignIn }: { onStart: () => void; onSignIn: 
             </button>
             <button className="l-btn-outline" onClick={() => go('how')}>See how it works</button>
           </div>
-          <div className="l-langs" role="group" aria-label="Choose a language for the example below">
-            Speak in your language
-            {(Object.keys(SAMPLES) as SampleLanguage[]).map((code) => (
-              <button key={code} className="l-lang" aria-pressed={language === code} onClick={() => setLanguage(code)}>
-                {SAMPLES[code].label}
-              </button>
-            ))}
-          </div>
-
           <div className="l-stage">
             <div className="l-stage-grid">
               <div className="l-mock">
                 <h3>Voice interview</h3>
                 <VoiceStatus state="listening" />
-                <div className="l-bubbles" lang={sample.lang}>
-                  <div className="l-bubble l-bubble-ai">{sample.ai}</div>
-                  <div className="l-bubble l-bubble-me">{sample.me}</div>
-                  <div className="l-bubble l-bubble-ai">{sample.ai2}</div>
+                <div className="l-bubbles">
+                  <div className="l-bubble l-bubble-ai">{SAMPLE.ai}</div>
+                  <div className="l-bubble l-bubble-me">{SAMPLE.me}</div>
+                  <div className="l-bubble l-bubble-ai">{SAMPLE.ai2}</div>
                 </div>
               </div>
               <div className="l-mock">
@@ -122,7 +105,7 @@ export function Landing({ onStart, onSignIn }: { onStart: () => void; onSignIn: 
           <Head eyebrow="Why us" title={`Why ${BRAND}?`}>Because a good first conversation is what makes a visit work.</Head>
           <div className="l-grid l-grid-3">
             <Card icon={<MicIcon />} title="Speak, don’t type">
-              <p>Patients answer out loud in their own language. No forms to fill in and no English needed.</p>
+              <p>Patients answer out loud. No forms to fill in and nothing to type.</p>
             </Card>
             <Card icon={<ClipboardIcon />} title="Doctors start informed">
               <p>A clear summary before the visit: urgent symptoms first, and allergies and medicines are always asked.</p>
@@ -166,8 +149,8 @@ export function Landing({ onStart, onSignIn }: { onStart: () => void; onSignIn: 
         <section className="l-section" id="features">
           <Head eyebrow="Features" title="Everything the visit needs">From the first symptom to the signed prescription.</Head>
           <div className="l-grid l-grid-4">
-            <Card small icon={<GlobeIcon size={20} />} title="Four languages">
-              <p>English, Hindi, Gujarati and Marathi, chosen by the patient.</p>
+            <Card small icon={<MicIcon size={20} />} title="Natural conversation">
+              <p>Patients can interrupt the assistant at any time, like talking to a person.</p>
             </Card>
             <Card small icon={<ShieldIcon size={20} />} title="Red-flag alerts">
               <p>Chest pain, breathlessness and other urgent symptoms are flagged first.</p>
@@ -200,7 +183,7 @@ export function Landing({ onStart, onSignIn }: { onStart: () => void; onSignIn: 
               ['Choose where', 'Pick your state and district.'],
               ['Pick a hospital and doctor', 'Best rated first, with the fee shown.'],
               ['Add past reports', 'Photograph reports and choose what to share.'],
-              ['Talk to the assistant', 'A short conversation in your language.'],
+              ['Talk to the assistant', 'A short voice conversation.'],
               ['Book a time', 'A slot with the doctor you chose.'],
             ].map(([title, text], i) => (
               <li key={title} className="l-step">

@@ -94,7 +94,7 @@ export function PatientHome({ me, onSignOut }: { me: Me; onSignOut: () => void }
               <span className="eyebrow">AI-assisted consultation</span>
               <h2>See the right doctor, already understood.</h2>
               <p>
-                Choose a hospital and a doctor, tell our assistant what is wrong in your own language, and book a time.
+                Choose a hospital and a doctor, tell our assistant what is wrong, and book a time.
                 Your doctor reads your story before you walk in.
               </p>
               <button className="primary big" onClick={() => setConsulting(true)}>Start a consultation</button>

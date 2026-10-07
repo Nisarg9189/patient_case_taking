@@ -283,7 +283,7 @@ function HospitalStep({ orgId, onStart }: { orgId: string; onStart: (target: Tar
           ))}
         </ul>
         <p className="muted small">
-          Next, our assistant asks you a few questions about your health, in your language. Your answers go to the doctor you choose,
+          Next, our assistant asks you a few questions about your health. Your answers go to the doctor you choose,
           and then you pick a time with them.
         </p>
         <div className="buttons">

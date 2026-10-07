@@ -12,14 +12,6 @@ interface Line {
 
 type Phase = 'idle' | 'connecting' | 'live' | 'done' | 'error'
 
-// the languages the agent can interview in (codes match LANGUAGES in backend/voice_agent.py)
-const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'hi', label: 'हिन्दी (Hindi)' },
-  { code: 'gu', label: 'ગુજરાતી (Gujarati)' },
-  { code: 'mr', label: 'मराठी (Marathi)' },
-]
-
 // The patient's interview, by the Azure Foundry voice agent (the server proxies Voice Live): the
 // patient can talk over the agent, and the agent saves their answers through its tools.
 // target: the hospital and doctor the patient chose, if they did: the interview goes to them and
@@ -30,7 +22,6 @@ export function AzureVoice({ target, onDone }: { target?: Target; onDone?: () =>
   const [lines, setLines] = useState<Line[]>([])
   const [caseId, setCaseId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [language, setLanguage] = useState('en')
   const [agentState, setAgentState] = useState<Exclude<VoiceState, 'speaking'>>('listening')
   const [speaking, setSpeaking] = useState(false) // the agent's voice is playing
 
@@ -90,7 +81,7 @@ export function AzureVoice({ target, onDone }: { target?: Target; onDone?: () =>
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/voice-agent`)
     ws.binaryType = 'arraybuffer'
     socket.current = ws
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token, language, org_id: target?.orgId, doctor_id: target?.doctorId, document_ids: target?.documentIds }))
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token, org_id: target?.orgId, doctor_id: target?.doctorId, document_ids: target?.documentIds }))
 
     // attached before the microphone prompt, so a message the server sends early is not lost
     ws.onmessage = (message) => {
@@ -134,7 +125,7 @@ export function AzureVoice({ target, onDone }: { target?: Target; onDone?: () =>
       return
     }
 
-  }, [language, release, target, onDone])
+  }, [release, target, onDone])
 
   const stop = useCallback(() => {
     socket.current?.send(JSON.stringify({ type: 'stop' }))
@@ -160,16 +151,6 @@ export function AzureVoice({ target, onDone }: { target?: Target; onDone?: () =>
             You will talk with the clinic's voice assistant. Answer in your own words; you can interrupt it at any
             time. Your browser will ask for microphone access.
           </p>
-          <label className="field">
-            <span>Language of the conversation</span>
-            <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <button className="secondary" onClick={start}>
             {phase === 'error' ? 'Try again' : 'Start interview'}
           </button>
