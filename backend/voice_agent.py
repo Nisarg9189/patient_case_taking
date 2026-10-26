@@ -87,12 +87,12 @@ def realtime_url():
                        f"api-version={API_VERSION}", ""))
 
 
-def open_connection(agent_name=None):
+def open_connection():
     from azure.ai.voicelive.aio import connect
     manager = connect(credential=_get_credential(), endpoint=os.environ["PROJECT_ENDPOINT"],
                       api_version=API_VERSION, headers=FOUNDRY_FEATURES)
     # the SDK builds the model/agent address itself; an agent's route is a different path
-    manager._prepare_url = lambda: realtime_url(agent_name)
+    manager._prepare_url = realtime_url
     return manager
 
 
