@@ -62,11 +62,12 @@ fi
 
 if ! az containerapp show --name "$APP" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
   echo "Creating the app $APP…"
-  # 0.5 CPU / 1 GiB; 0 replicas when idle (free when nobody uses it), at most 1: an interview
-  # in progress lives in the app's memory, so it must stay on one replica
+  # 1 CPU / 2 GiB (Redis and Kafka run inside the container, Kafka's Java needs the memory);
+  # 0 replicas when idle (free when nobody uses it), at most 1: an interview in progress lives
+  # in the app's memory, and so do Redis and Kafka, so it must stay on one replica
   az containerapp create --name "$APP" --resource-group "$RESOURCE_GROUP" --environment "$ENVIRONMENT" \
     --image "$IMAGE" --target-port 8000 --ingress external --transport auto \
-    --cpu 0.5 --memory 1.0Gi --min-replicas 0 --max-replicas 1 \
+    --cpu 1.0 --memory 2.0Gi --min-replicas 0 --max-replicas 1 \
     --scale-rule-name http --scale-rule-type http --scale-rule-http-concurrency 50 \
     --secrets "${secrets[@]}" --env-vars "${env_vars[@]}" \
     --only-show-errors >/dev/null
@@ -76,7 +77,7 @@ else
     --only-show-errors >/dev/null
   # a new revision suffix makes Azure pull the image again even when the tag is still :latest
   az containerapp update --name "$APP" --resource-group "$RESOURCE_GROUP" --image "$IMAGE" \
-    --set-env-vars "${env_vars[@]}" --min-replicas 0 --max-replicas 1 \
+    --set-env-vars "${env_vars[@]}" --cpu 1.0 --memory 2.0Gi --min-replicas 0 --max-replicas 1 \
     --revision-suffix "r$(date +%Y%m%d%H%M%S)" --only-show-errors >/dev/null
 fi
 

@@ -18,6 +18,17 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Redis (the interview state) and Kafka (the queue to the summary worker) run inside this
+# container, so there is no hosted trial that can expire; see deploy/start.sh. Kafka needs Java.
+ARG KAFKA_VERSION=3.9.1
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends redis-server default-jre-headless curl ca-certificates \
+    && curl -fsSL "https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_2.13-${KAFKA_VERSION}.tgz" \
+       | tar -xz -C /opt \
+    && mv /opt/kafka_2.13-${KAFKA_VERSION} /opt/kafka \
+    && apt-get purge -y curl && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY patient-nlp/requirements.txt patient-nlp/requirements.txt
 COPY backend/requirements.txt backend/requirements.txt
@@ -27,6 +38,8 @@ RUN pip install -r patient-nlp/requirements.txt -r backend/requirements.txt
 COPY patient-nlp/*.py patient-nlp/
 COPY patient-nlp/certs patient-nlp/certs
 COPY backend/*.py backend/
+COPY deploy/kafka.properties /app/kafka.properties
+COPY --chmod=755 deploy/start.sh /app/start.sh
 COPY --from=frontend /frontend/dist frontend/dist
 ENV FRONTEND_DIST=/app/frontend/dist
 
@@ -35,9 +48,10 @@ USER app
 WORKDIR /app/backend
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"
 
-# one process: each interview lives on one WebSocket, and the load test showed one process
-# handles 250+ interviews (async clients); Caddy in front terminates HTTPS
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# start.sh starts Redis and Kafka, then runs one uvicorn process: each interview lives on one
+# WebSocket, and the load test showed one process handles 250+ interviews (async clients);
+# Caddy in front terminates HTTPS. EMBEDDED_SERVICES=0 uses the REDIS_* / KAFKA_* settings instead.
+CMD ["/app/start.sh"]

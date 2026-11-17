@@ -56,8 +56,8 @@ class redis_db:
             host=os.environ["REDIS_HOST"],
             port=int(os.environ["REDIS_PORT"]),
             decode_responses=True,
-            username=os.environ["REDIS_USERNAME"],
-            password=os.environ["REDIS_PASSWORD"],
+            username=os.getenv("REDIS_USERNAME"),   # none for the Redis inside the container
+            password=os.getenv("REDIS_PASSWORD"),
         )
         
     

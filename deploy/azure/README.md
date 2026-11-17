@@ -10,7 +10,7 @@ GitHub (push to main) --Actions--> ghcr.io/nisarg9189/patient_case_taking:latest
                                             |
 Azure Container Apps (Central India) <------+   pulls the image
    app + summary worker, secrets from patient-nlp/.env
-   -> Neon Postgres + Neon Auth, Kafka, Redis, Gemini, OpenAI (all hosted elsewhere)
+   -> Neon Postgres + Neon Auth, Gemini, OpenAI (hosted elsewhere); Redis and Kafka run inside the container (deploy/start.sh)
 ```
 
 ## Once

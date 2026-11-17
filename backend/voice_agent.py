@@ -75,7 +75,7 @@ def redis():
 
 
 def configured():
-    return all(os.getenv(name) for name in ("PROJECT_ENDPOINT", "AGENT_NAME", "REDIS_HOST", "REDIS_PASSWORD"))
+    return all(os.getenv(name) for name in ("PROJECT_ENDPOINT", "AGENT_NAME", "REDIS_HOST"))
 
 
 def realtime_url():

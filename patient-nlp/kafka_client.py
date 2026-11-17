@@ -26,26 +26,28 @@ def create_ssl_context():
     return context
 
 
+def _connection():
+    """Hosted Kafka (user and password over TLS), or the plain one inside the container."""
+    if not KAFKA_USER:
+        return {"bootstrap_servers": BOOTSTRAP_SERVERS}
+    return {
+        "bootstrap_servers": BOOTSTRAP_SERVERS,
+        "security_protocol": "SASL_SSL",
+        "sasl_mechanism": "PLAIN",
+        "sasl_plain_username": KAFKA_USER,
+        "sasl_plain_password": KAFKA_PASSWORD,
+        "ssl_context": create_ssl_context(),
+    }
+
+
 def create_producer():
-    return AIOKafkaProducer(
-        bootstrap_servers=BOOTSTRAP_SERVERS,
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username=KAFKA_USER,
-        sasl_plain_password=KAFKA_PASSWORD,
-        ssl_context=create_ssl_context(),
-    )
+    return AIOKafkaProducer(**_connection())
 
 
 def create_consumer(topic, group_id):
     return AIOKafkaConsumer(
         topic,
-        bootstrap_servers=BOOTSTRAP_SERVERS,
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username=KAFKA_USER,
-        sasl_plain_password=KAFKA_PASSWORD,
-        ssl_context=create_ssl_context(),
+        **_connection(),
         group_id=group_id,
         auto_offset_reset="earliest",
     )
