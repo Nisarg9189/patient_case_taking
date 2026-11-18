@@ -11,6 +11,21 @@ answers become a case summary for a clinician.
 
 ![Voice interview](docs/screenshots/voice-interview.png)
 
+![Doctor portal: the clinician summary, with the red flag first](docs/screenshots/doctor-portal.png)
+
+## Try the demo
+
+Sign in at the live link with a demo account (test data only):
+
+| Role | Email | Password |
+|---|---|---|
+| Patient | n918929012006@gmail.com | n918929012006@gmail.com |
+| Doctor | n35389023@gmail.com | n35389023@gmail.com |
+
+As the patient: start a consultation, pick a hospital and doctor, and talk to the AI voice
+agent (allow the microphone). As the doctor: open *Clinic cases* to read the summary of the
+interview, and *Appointments* to see the booking.
+
 - **Voice**: an Azure AI Foundry voice agent (speech recognition, the model, and the voice are
   set in Foundry). The browser talks to `/ws/voice-agent`; the server connects to the agent with
   its own Azure identity, so the browser never sees Azure.
