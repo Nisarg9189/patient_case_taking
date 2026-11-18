@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './Auth.css'
 import { AuthArt } from './AuthArt'
 import { authClient, refreshSession, type Invitation } from './auth'
@@ -16,6 +16,16 @@ const ROLE_NAME: Record<string, string> = {
 }
 
 type Mode = 'sign-in' | 'sign-up' | 'verify'
+
+// The auth library may return an error or throw one: either way the patient gets a plain message.
+function describe(error: unknown, fallback: string) {
+  const message = (error as { message?: string } | null)?.message ?? ''
+  if (/invalid (email|password)|incorrect/i.test(message)) return 'Wrong email or password. Please check and try again.'
+  if (/otp|code/i.test(message)) return 'That code is wrong or has expired. Check it, or send a new one.'
+  if (/already (exist|registered)|exists/i.test(message)) return 'An account with this email already exists. Try signing in.'
+  if (/failed to fetch|network/i.test(message)) return 'Could not reach the server. Check your connection and try again.'
+  return message || fallback
+}
 
 // Sign in, create an account, or verify the email address with the 6-digit code Neon Auth
 // emails (Neon Auth: email + password, "verify at sign-up" with verification codes).
@@ -45,11 +55,22 @@ export function AuthScreen({
     verifyEmail ? `Verify ${verifyEmail} to continue: send a code, then enter it here.` : null,
   )
 
+  // the popup goes away by itself
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(null), 6000)
+    return () => clearTimeout(timer)
+  }, [error])
+
   const sendCode = async () => {
     setError(null)
-    const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'email-verification' })
-    if (error) setError(error.message ?? 'Could not send the code. Please try again.')
-    else setInfo(`We emailed a 6-digit code to ${email}. It expires in 15 minutes.`)
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'email-verification' })
+      if (error) setError(describe(error, 'Could not send the code. Please try again.'))
+      else setInfo(`We emailed a 6-digit code to ${email}. It expires in 15 minutes.`)
+    } catch (e) {
+      setError(describe(e, 'Could not send the code. Please try again.'))
+    }
   }
 
   const submit = async (event: React.FormEvent) => {
@@ -59,7 +80,7 @@ export function AuthScreen({
     try {
       if (mode === 'sign-up') {
         const { data, error } = await authClient.signUp.email({ email, password, name })
-        if (error) return setError(error.message ?? 'Could not create the account.')
+        if (error) return setError(describe(error, 'Could not create the account.'))
         if (data?.user && !data.user.emailVerified) {
           setMode('verify')
           setInfo(`We emailed a 6-digit code to ${email}. Enter it below to finish creating your account.`)
@@ -71,24 +92,27 @@ export function AuthScreen({
       if (mode === 'sign-in') {
         const { error } = await authClient.signIn.email({ email, password })
         if (!error) return onSignedIn()
-        if (error.status === 403 || /verif/i.test(error.message ?? '')) {
-          setMode('verify')
-          await sendCode()
-          return
-        }
-        return setError(error.message ?? 'Could not sign in. Please try again.')
+        throw error
       }
 
       // verify
       const { error } = await authClient.emailOtp.verifyEmail({ email, otp: code.trim() })
-      if (error) return setError(error.message ?? 'That code did not work. Check it or send a new one.')
+      if (error) return setError(describe(error, 'That code did not work. Check it or send a new one.'))
       if (password) {
         const signedIn = await authClient.signIn.email({ email, password })
-        if (signedIn.error) return setError(signedIn.error.message ?? 'Verified. Please sign in.')
+        if (signedIn.error) return setError(describe(signedIn.error, 'Verified. Please sign in.'))
       } else {
         await refreshSession() // a signed-in user: get a token that says "verified"
       }
       onSignedIn()
+    } catch (e) {
+      const unverified = (e as { status?: number })?.status === 403 || /verif/i.test((e as Error)?.message ?? '')
+      if (mode === 'sign-in' && unverified) {
+        setMode('verify')
+        await sendCode()
+      } else {
+        setError(describe(e, mode === 'sign-up' ? 'Could not create the account.' : 'Could not sign in. Please try again.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -106,6 +130,12 @@ export function AuthScreen({
 
   return (
     <div className="au-shell">
+      {error && (
+        <div className="au-toast" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} aria-label="Close">×</button>
+        </div>
+      )}
       <aside className="au-side">
         <AuthArt className="au-art" />
         <div className="au-side-inner">
@@ -207,11 +237,6 @@ export function AuthScreen({
                   />
                 </span>
               </label>
-            )}
-            {error && (
-              <p className="review-note review-error" role="alert">
-                {error}
-              </p>
             )}
             <button className="au-submit" type="submit" disabled={busy}>
               {busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : mode === 'sign-up' ? 'Create account' : 'Verify email'}

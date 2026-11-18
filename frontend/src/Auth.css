@@ -296,3 +296,39 @@
     margin-top: -6px;
   }
 }
+
+/* a small popup for a wrong password, a taken email and similar */
+.au-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 14px 12px 16px;
+  border-radius: 12px;
+  background: #fbeceb;
+  border: 1px solid #efb9b4;
+  color: #9b2c21;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 10px 30px rgba(60, 30, 30, 0.18);
+  animation: au-toast-in 0.2s ease-out;
+}
+
+.au-toast button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@keyframes au-toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
