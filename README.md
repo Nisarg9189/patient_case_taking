@@ -1,8 +1,15 @@
 # Patient case taking
 
-A spoken intake interview: the patient talks with a voice assistant in the browser, in the
-language they pick (English, Hindi, Gujarati or Marathi), and their answers become a case
-summary for a clinician.
+**Live demo: https://container-app-def5.proudwater-9fc8de11.centralindia.azurecontainerapps.io**
+(runs on Azure Container Apps and scales to zero when idle, so the first visit after a quiet
+spell can take about 30 seconds to start)
+
+A spoken intake interview: the patient talks with a voice assistant in the browser, and their
+answers become a case summary for a clinician.
+
+![Landing page](docs/screenshots/landing.png)
+
+![Voice interview](docs/screenshots/voice-interview.png)
 
 - **Voice**: an Azure AI Foundry voice agent (speech recognition, the model, and the voice are
   set in Foundry). The browser talks to `/ws/voice-agent`; the server connects to the agent with
